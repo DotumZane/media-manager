@@ -1,30 +1,34 @@
 # Media Manager
 
-Media Manager is a planned self-hosted app for validating and overseeing a media automation pipeline.
+Media Manager is a self-hosted web interface for configuring and overseeing the existing MediaValidator workflow.
 
-## Status
+## Current status
 
-Planning. This repository currently captures the project scope and initial design decisions. Application code will follow after the existing MediaValidator and VPN watchdog behavior has been reviewed.
+The repository now includes the MediaValidator source, its container image, and a first-run setup page. The validator continues to watch the Movies and TV folders under the completed-downloads path, scan files with ClamAV, check video streams with ffprobe, reject risky extras, stage approved media in quarantine, and request imports from Radarr or Sonarr.
 
-## Planned capabilities
+The setup page lets you configure container paths, ClamAV, scan timing, Radarr, and Sonarr. It can check folder access and service connections before you save. The current validation rules remain unchanged.
 
-- Validate media and keep a history of processing and quarantine actions.
-- Integrate with Radarr and Sonarr.
-- Provide a web interface for media workflow and service status.
-- Show VPN safety status and provide a guarded recovery flow for the download stack.
+## Run the container
 
-## Safety design
+Build the image from this folder, then run it on the same Docker network as ClamAV, Radarr, and Sonarr. Mount persistent storage at /state, the completed-downloads folder at /data/Downloads/Complete, and the quarantine folder at /data/Quarantine. ClamAV must see the same media files at the path configured as its scan root (default /scan).
 
-- Run VPN monitoring as a separate watchdog service so it remains active if the web app stops.
-- Fail closed: stop the download stack when VPN health checks fail, and require manual recovery.
-- Keep Docker control narrowly scoped; the web app should not receive unrestricted access to the Docker socket.
-- Before recovery, verify that the VPN is healthy, its public IP differs from the normal WAN IP, and health has remained stable before starting services.
+Set WEB_PASSWORD in the container configuration before opening the setup page. The page uses HTTP Basic Authentication with username admin. Then open http://<server>:8080 from your trusted home network.
 
-## Initial milestones
+## Credentials and Git
 
-1. Review the current MediaValidator and Unraid watchdog behavior.
-2. Document the monitored containers, health checks, lockout behavior, and recovery sequence.
-3. Define the boundary between the watchdog and the web app.
-4. Implement the watchdog and VPN Safety interface, then connect them to the existing media workflow.
+- Radarr and Sonarr API keys are accepted through the setup page and stored in /state/config.json with owner-only file permissions.
+- Saved API keys are never returned to the browser. Leave a key field blank to keep the saved key; use its remove checkbox to clear it.
+- .gitignore excludes local environment files, runtime configuration, state folders, and database files. Do not add /state/config.json, .env, or deployment-specific secrets to Git.
+- The source reads RADARR_API_KEY and SONARR_API_KEY from environment variables for compatibility, but contains no key values.
+- The setup UI uses HTTP. Keep it on a trusted local network; use HTTPS through a protected proxy for remote access.
 
-No credentials, private network addresses, or deployment configuration are included in this repository.
+## Existing settings
+
+The setup page exposes the validator's current configurable values:
+
+- Completed-downloads and quarantine paths.
+- ClamAV host, port, and shared scan path.
+- Scan interval, file-settle time, and Radarr/Sonarr import retry interval.
+- Radarr and Sonarr URLs, API keys, and their import paths.
+
+Initial defaults are based on the existing validator, with a generic clamav hostname instead of a private network address. The state database remains under /state/validator.db.

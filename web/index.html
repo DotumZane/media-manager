@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <title>Media Manager setup</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <div class="shell">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="Media Manager home">
+          <span class="brand-mark" aria-hidden="true">M</span>
+          <span>Media Manager</span>
+        </a>
+        <div class="topbar-meta">
+          <span class="service-dot" aria-hidden="true"></span>
+          <span id="service-state">Loading setup</span>
+        </div>
+      </header>
+
+      <main>
+        <section class="hero">
+          <div class="eyebrow"><span class="eyebrow-line"></span> FIRST-RUN SETUP</div>
+          <h1>Make MediaValidator<br /><span>yours.</span></h1>
+          <p class="hero-copy">Connect your folders and media services, then check each connection before saving. Your current validation rules stay in place.</p>
+          <div class="hero-note">
+            <span class="note-icon" aria-hidden="true">i</span>
+            <p>API keys are saved to the app’s private runtime state. Saved keys are never shown back here.</p>
+          </div>
+        </section>
+
+        <div class="layout">
+          <aside class="rail" aria-label="Setup sections">
+            <a class="rail-item active" href="#folders"><span>01</span> Folders</a>
+            <a class="rail-item" href="#scanner"><span>02</span> Scanner</a>
+            <a class="rail-item" href="#integrations"><span>03</span> Integrations</a>
+            <a class="rail-item" href="#finish"><span>04</span> Save &amp; check</a>
+            <div class="rail-tip">
+              <span class="tip-label">QUICK TIP</span>
+              <p>Use the paths as they appear <em>inside</em> the container, not the host’s filesystem.</p>
+            </div>
+          </aside>
+
+          <form id="settings-form" class="settings" autocomplete="off">
+            <section id="folders" class="card">
+              <div class="section-heading">
+                <div class="section-number">01</div>
+                <div>
+                  <h2>Folders</h2>
+                  <p>Choose where completed downloads arrive and where approved or rejected files are kept.</p>
+                </div>
+              </div>
+              <div class="field-grid">
+                <label class="field wide">
+                  <span>Completed downloads folder</span>
+                  <input name="input_path" type="text" required placeholder="/data/Downloads/Complete" />
+                  <small>Contains the <code>Movies</code> and <code>TV</code> folders MediaValidator scans.</small>
+                </label>
+                <label class="field wide">
+                  <span>Quarantine folder</span>
+                  <input name="quarantine_path" type="text" required placeholder="/data/Quarantine" />
+                  <small>Approved media is staged here before Radarr or Sonarr imports it.</small>
+                </label>
+              </div>
+              <div class="inline-actions">
+                <button class="button button-secondary" type="button" data-test="paths">Check folders</button>
+                <span class="test-result" id="result-paths" aria-live="polite"></span>
+              </div>
+            </section>
+
+            <section id="scanner" class="card">
+              <div class="section-heading">
+                <div class="section-number">02</div>
+                <div>
+                  <h2>Scanner</h2>
+                  <p>Set the ClamAV endpoint and how often the validator checks completed downloads.</p>
+                </div>
+              </div>
+              <div class="field-grid three">
+                <label class="field span-two">
+                  <span>ClamAV host</span>
+                  <input name="clamav_host" type="text" required placeholder="clamav" />
+                </label>
+                <label class="field">
+                  <span>Port</span>
+                  <input name="clamav_port" type="number" min="1" max="65535" required />
+                </label>
+                <label class="field wide">
+                  <span>Scan path inside ClamAV</span>
+                  <input name="clamav_scan_root" type="text" required placeholder="/scan" />
+                  <small>This must point to the same shared files as the completed downloads folder.</small>
+                </label>
+                <label class="field">
+                  <span>Check every</span>
+                  <div class="input-suffix"><input name="scan_interval" type="number" min="1" max="3600" required /><span>seconds</span></div>
+                </label>
+                <label class="field">
+                  <span>Wait for files to settle</span>
+                  <div class="input-suffix"><input name="settle_seconds" type="number" min="0" max="86400" required /><span>seconds</span></div>
+                </label>
+                <label class="field">
+                  <span>Retry imports every</span>
+                  <div class="input-suffix"><input name="import_retry_seconds" type="number" min="1" max="86400" required /><span>seconds</span></div>
+                </label>
+              </div>
+              <div class="inline-actions">
+                <button class="button button-secondary" type="button" data-test="clamav">Test ClamAV</button>
+                <span class="test-result" id="result-clamav" aria-live="polite"></span>
+              </div>
+            </section>
+
+            <section id="integrations" class="card">
+              <div class="section-heading">
+                <div class="section-number">03</div>
+                <div>
+                  <h2>Integrations</h2>
+                  <p>Give MediaValidator the service URL and API key it needs to request imports.</p>
+                </div>
+              </div>
+
+              <div class="integration-block">
+                <div class="integration-heading">
+                  <div class="integration-logo radarr">R</div>
+                  <div><h3>Radarr</h3><p>Movie imports</p></div>
+                  <span class="saved-pill" id="radarr-key-state">Not connected</span>
+                </div>
+                <div class="field-grid">
+                  <label class="field wide">
+                    <span>Radarr URL</span>
+                    <input name="radarr_url" type="url" placeholder="http://radarr:7878" />
+                  </label>
+                  <label class="field wide">
+                    <span>API key</span>
+                    <input name="radarr_api_key" type="password" autocomplete="new-password" placeholder="Leave blank to keep the saved key" />
+                    <small>Your key is stored in runtime state and is not returned to the browser after saving.</small>
+                  </label>
+                  <label class="field wide">
+                    <span>Import folder inside Radarr</span>
+                    <input name="radarr_import_root" type="text" required placeholder="/data/Quarantine/Pending/Movies" />
+                    <small>Path as seen inside Radarr; it must point to the same staged files MediaValidator creates.</small>
+                  </label>
+                </div>
+                <label class="clear-key" id="radarr-clear-wrap" hidden><input name="clear_radarr_api_key" type="checkbox" /> Remove the saved Radarr key</label>
+                <div class="inline-actions">
+                  <button class="button button-secondary" type="button" data-test="radarr">Test Radarr</button>
+                  <span class="test-result" id="result-radarr" aria-live="polite"></span>
+                </div>
+              </div>
+
+              <div class="integration-block last">
+                <div class="integration-heading">
+                  <div class="integration-logo sonarr">S</div>
+                  <div><h3>Sonarr</h3><p>TV episode imports</p></div>
+                  <span class="saved-pill" id="sonarr-key-state">Not connected</span>
+                </div>
+                <div class="field-grid">
+                  <label class="field wide">
+                    <span>Sonarr URL</span>
+                    <input name="sonarr_url" type="url" placeholder="http://sonarr:8989" />
+                  </label>
+                  <label class="field wide">
+                    <span>API key</span>
+                    <input name="sonarr_api_key" type="password" autocomplete="new-password" placeholder="Leave blank to keep the saved key" />
+                    <small>Your key is stored in runtime state and is not returned to the browser after saving.</small>
+                  </label>
+                  <label class="field wide">
+                    <span>Import folder inside Sonarr</span>
+                    <input name="sonarr_import_root" type="text" required placeholder="/data/Quarantine/Pending/TV" />
+                    <small>Path as seen inside Sonarr; it must point to the same staged files MediaValidator creates.</small>
+                  </label>
+                </div>
+                <label class="clear-key" id="sonarr-clear-wrap" hidden><input name="clear_sonarr_api_key" type="checkbox" /> Remove the saved Sonarr key</label>
+                <div class="inline-actions">
+                  <button class="button button-secondary" type="button" data-test="sonarr">Test Sonarr</button>
+                  <span class="test-result" id="result-sonarr" aria-live="polite"></span>
+                </div>
+              </div>
+            </section>
+
+            <section id="finish" class="finish-card">
+              <div>
+                <span class="eyebrow">READY WHEN YOU ARE</span>
+                <h2>Save your setup</h2>
+                <p>Settings take effect immediately. You can return to this page and change them at any time.</p>
+              </div>
+              <button class="button button-primary" type="submit"><span>Save settings</span><span aria-hidden="true">→</span></button>
+              <div class="save-result" id="save-result" aria-live="polite"></div>
+            </section>
+          </form>
+        </div>
+      </main>
+
+      <footer class="footer"><span>MediaValidator setup</span><span>Configuration stays with your app’s runtime data.</span></footer>
+    </div>
+  </body>
+</html>

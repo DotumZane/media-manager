@@ -1,0 +1,16 @@
+.git
+.env
+.env.*
+!.env.example
+state/
+appdata/
+config.json
+settings.json
+*.db
+*.sqlite
+*.sqlite3
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.tar.gz

@@ -1,0 +1,17 @@
+# Runtime secrets and configuration
+.env
+.env.*
+!.env.example
+config.json
+settings.json
+state/
+appdata/
+
+# Runtime databases and Python artifacts
+*.db
+*.sqlite
+*.sqlite3
+__pycache__/
+*.py[cod]
+.venv/
+venv/
