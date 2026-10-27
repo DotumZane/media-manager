@@ -28,6 +28,8 @@ button { cursor: pointer; }
 .brand { display: inline-flex; align-items: center; gap: 11px; color: var(--ink); text-decoration: none; font-family: Manrope, sans-serif; font-size: 15px; font-weight: 800; letter-spacing: -.04em; }
 .brand-mark { width: 29px; height: 29px; display: grid; place-items: center; border-radius: 9px 9px 9px 3px; background: var(--green); color: #fff; font-size: 15px; }
 .topbar-meta { display: inline-flex; align-items: center; gap: 8px; color: #78827d; font-family: "DM Mono", monospace; font-size: 11px; letter-spacing: .015em; }
+.logout-button { margin-left: 10px; padding: 6px 9px; border: 1px solid #e1e7e2; border-radius: 5px; background: #fff; color: #68756e; font-size: 10px; font-weight: 600; letter-spacing: 0; transition: .16s ease; }
+.logout-button:hover { border-color: #bed0c3; color: var(--green-dark); background: #f7faf7; }
 .service-dot { width: 7px; height: 7px; border-radius: 50%; background: #d7a264; box-shadow: 0 0 0 4px #f5ecdf; }
 .hero { max-width: 800px; padding: 70px 0 48px; }
 .eyebrow { display: inline-flex; align-items: center; gap: 9px; color: var(--green); font-family: "DM Mono", monospace; font-size: 10px; font-weight: 500; letter-spacing: .12em; }

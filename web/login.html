@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <meta name="theme-color" content="#f3f6f2" />
+    <title>Sign in · Media Manager</title>
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/login.css" />
+    <script src="/login.js" defer></script>
+  </head>
+  <body>
+    <main class="login-shell">
+      <a class="brand" href="/" aria-label="Media Manager">
+        <img src="/icon.svg" alt="" />
+        <span>Media Manager</span>
+      </a>
+
+      <section class="login-card" aria-labelledby="login-title">
+        <div class="card-mark" aria-hidden="true">
+          <svg viewBox="0 0 32 32" fill="none">
+            <path d="M5.5 23.5V8.5h4l6.5 8 6.5-8h4v15h-4V14l-6.5 7.5L9.5 14v9.5h-4Z" fill="currentColor"/>
+          </svg>
+        </div>
+        <p class="eyebrow"><span></span> YOUR PRIVATE MEDIA SERVER</p>
+        <h1 id="login-title">Welcome back</h1>
+        <p class="intro">Sign in to configure and manage your media workflow.</p>
+
+        <form id="login-form">
+          <label class="field">
+            <span>Username</span>
+            <input name="username" type="text" value="admin" autocomplete="username" required />
+          </label>
+
+          <label class="field">
+            <span>Password</span>
+            <span class="password-wrap">
+              <input id="password" name="password" type="password" autocomplete="current-password" required autofocus />
+              <button class="password-toggle" type="button" id="password-toggle" aria-label="Show password" aria-pressed="false">Show</button>
+            </span>
+          </label>
+
+          <p class="login-error" id="login-error" role="alert" hidden></p>
+          <button class="sign-in" id="sign-in-button" type="submit">
+            <span>Sign in</span>
+            <span aria-hidden="true">→</span>
+          </button>
+        </form>
+
+        <div class="card-foot">
+          <span class="lock-icon" aria-hidden="true">●</span>
+          <span>Your settings stay on this server.</span>
+        </div>
+      </section>
+
+      <footer class="page-foot">
+        <span>MEDIA MANAGER</span>
+        <span>Private access · Local setup</span>
+      </footer>
+    </main>
+  </body>
+</html>

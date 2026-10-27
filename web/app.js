@@ -38,10 +38,23 @@ async function requestJSON(url, body) {
     body: body ? JSON.stringify(body) : undefined,
     cache: "no-store",
   });
+  if (response.status === 401) {
+    window.location.replace("/");
+    throw new Error("Your session expired. Please sign in again.");
+  }
   const result = await response.json();
   if (!response.ok) throw new Error(result.message || "The request could not be completed.");
   return result;
 }
+
+document.querySelector("#logout-button").addEventListener("click", async (event) => {
+  event.currentTarget.disabled = true;
+  try {
+    await fetch("/api/logout", { method: "POST", cache: "no-store" });
+  } finally {
+    window.location.replace("/");
+  }
+});
 
 function fillSettings(settings) {
   for (const name of settingNames) {

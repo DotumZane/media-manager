@@ -1,7 +1,6 @@
-import base64
-import binascii
 import hmac
 import os
+import secrets
 import time
 import json
 import socket
@@ -13,6 +12,7 @@ import tempfile
 import threading
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.cookies import SimpleCookie
 from urllib.error import HTTPError, URLError
 from pathlib import Path
 from datetime import datetime
@@ -21,6 +21,10 @@ from urllib.parse import urlsplit
 STATE = Path(os.getenv("STATE_DIR", "/state")).expanduser()
 CONFIG_FILE = STATE / "config.json"
 CONFIG_LOCK = threading.RLock()
+SESSION_COOKIE = "media_manager_session"
+SESSION_TTL_SECONDS = 12 * 60 * 60
+SESSION_LOCK = threading.RLock()
+SESSIONS = {}
 
 
 def default_settings():
@@ -306,6 +310,32 @@ def test_paths(candidate):
 
 
 WEB_ROOT = Path(__file__).parent / "web"
+ICON_FILE = Path(__file__).parent / "icon.svg"
+
+
+def create_session():
+    now = time.time()
+    token = secrets.token_urlsafe(32)
+    with SESSION_LOCK:
+        expired = [key for key, expires in SESSIONS.items() if expires <= now]
+        for key in expired:
+            SESSIONS.pop(key, None)
+        SESSIONS[token] = now + SESSION_TTL_SECONDS
+    return token
+
+
+def session_is_valid(token):
+    if not token:
+        return False
+    now = time.time()
+    with SESSION_LOCK:
+        expires = SESSIONS.get(token)
+        if expires is None:
+            return False
+        if expires <= now:
+            SESSIONS.pop(token, None)
+            return False
+        return True
 
 
 class SetupHandler(BaseHTTPRequestHandler):
@@ -313,7 +343,7 @@ class SetupHandler(BaseHTTPRequestHandler):
         # Do not log setup request bodies or connection-test details.
         return
 
-    def send_content(self, status, body, content_type):
+    def send_content(self, status, body, content_type, extra_headers=None):
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
@@ -324,47 +354,52 @@ class SetupHandler(BaseHTTPRequestHandler):
             "Content-Security-Policy",
             "default-src 'self'; script-src 'self'; style-src 'self'; "
             "connect-src 'self'; img-src 'self'; object-src 'none'; "
-            "base-uri 'self'; frame-ancestors 'none'",
+            "base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
         )
+        for name, value in extra_headers or []:
+            self.send_header(name, value)
         self.end_headers()
         self.wfile.write(body)
 
-    def send_json(self, status, data):
+    def send_json(self, status, data, extra_headers=None):
         self.send_content(
             status,
             json.dumps(data).encode("utf-8"),
             "application/json; charset=utf-8",
+            extra_headers,
         )
 
+    def session_token(self):
+        cookie = SimpleCookie()
+        try:
+            cookie.load(self.headers.get("Cookie", ""))
+        except Exception:
+            return ""
+        morsel = cookie.get(SESSION_COOKIE)
+        return morsel.value if morsel else ""
+
     def authenticated(self):
-        expected = os.getenv("WEB_PASSWORD", "")
-        if not expected:
+        return bool(os.getenv("WEB_PASSWORD", "")) and session_is_valid(self.session_token())
+
+    def require_authentication(self):
+        if not os.getenv("WEB_PASSWORD", ""):
             self.send_json(503, {
                 "ok": False,
                 "message": "Set WEB_PASSWORD in the container settings to enable the setup page.",
             })
             return False
+        if not self.authenticated():
+            self.send_json(401, {"ok": False, "message": "Please sign in to continue."})
+            return False
+        return True
 
-        authorization = self.headers.get("Authorization", "")
-        scheme, _, encoded = authorization.partition(" ")
-        if scheme.lower() == "basic" and encoded:
-            try:
-                credentials = base64.b64decode(encoded, validate=True).decode("utf-8")
-                username, separator, password = credentials.partition(":")
-            except (binascii.Error, UnicodeDecodeError):
-                username, separator, password = "", "", ""
-            if separator and username == "admin" and hmac.compare_digest(password, expected):
-                return True
-
-        body = json.dumps({"ok": False, "message": "Authentication required."}).encode("utf-8")
-        self.send_response(401)
-        self.send_header("WWW-Authenticate", 'Basic realm="Media Manager setup"')
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        self.wfile.write(body)
-        return False
+    def send_asset(self, filename, content_type, icon=False):
+        try:
+            body = (ICON_FILE if icon else WEB_ROOT / filename).read_bytes()
+        except OSError:
+            self.send_json(500, {"ok": False, "message": "Setup page files are missing."})
+            return
+        self.send_content(200, body, content_type)
 
     def read_json(self):
         try:
@@ -379,9 +414,36 @@ class SetupHandler(BaseHTTPRequestHandler):
             raise ValueError("Request body must be valid JSON.")
 
     def do_GET(self):
-        if not self.authenticated():
-            return
         path = urlsplit(self.path).path
+        if path == "/api/session":
+            configured = bool(os.getenv("WEB_PASSWORD", ""))
+            self.send_json(200, {
+                "ok": True,
+                "configured": configured,
+                "authenticated": configured and self.authenticated(),
+                "message": "" if configured else "Set WEB_PASSWORD in the Unraid container settings to enable sign-in.",
+            })
+            return
+
+        public_assets = {
+            "/login.css": ("login.css", "text/css; charset=utf-8"),
+            "/login.js": ("login.js", "text/javascript; charset=utf-8"),
+            "/icon.svg": (None, "image/svg+xml"),
+        }
+        if path in public_assets:
+            filename, content_type = public_assets[path]
+            self.send_asset(filename, content_type, icon=path == "/icon.svg")
+            return
+
+        if path in ("/", "/index.html"):
+            filename = "index.html" if self.authenticated() else "login.html"
+            content_type = "text/html; charset=utf-8"
+            self.send_asset(filename, content_type)
+            return
+
+        if not self.require_authentication():
+            return
+
         if path == "/api/config":
             self.send_json(200, {"ok": True, "settings": public_settings()})
             return
@@ -390,8 +452,6 @@ class SetupHandler(BaseHTTPRequestHandler):
             return
 
         assets = {
-            "/": ("index.html", "text/html; charset=utf-8"),
-            "/index.html": ("index.html", "text/html; charset=utf-8"),
             "/styles.css": ("styles.css", "text/css; charset=utf-8"),
             "/app.js": ("app.js", "text/javascript; charset=utf-8"),
         }
@@ -400,17 +460,51 @@ class SetupHandler(BaseHTTPRequestHandler):
             self.send_json(404, {"ok": False, "message": "Not found."})
             return
         filename, content_type = asset
-        try:
-            body = (WEB_ROOT / filename).read_bytes()
-        except OSError:
-            self.send_json(500, {"ok": False, "message": "Setup page files are missing."})
-            return
-        self.send_content(200, body, content_type)
+        self.send_asset(filename, content_type)
 
     def do_POST(self):
-        if not self.authenticated():
-            return
         path = urlsplit(self.path).path
+        if path == "/api/login":
+            expected = os.getenv("WEB_PASSWORD", "")
+            if not expected:
+                self.send_json(503, {
+                    "ok": False,
+                    "message": "Set WEB_PASSWORD in the Unraid container settings to enable sign-in.",
+                })
+                return
+            try:
+                payload = self.read_json()
+            except ValueError as exc:
+                self.send_json(400, {"ok": False, "message": str(exc)})
+                return
+            username = payload.get("username", "") if isinstance(payload, dict) else ""
+            password = payload.get("password", "") if isinstance(payload, dict) else ""
+            username_bytes = username.encode("utf-8") if isinstance(username, str) else b""
+            password_bytes = password.encode("utf-8") if isinstance(password, str) else b""
+            username_ok = hmac.compare_digest(username_bytes, b"admin")
+            password_ok = hmac.compare_digest(password_bytes, expected.encode("utf-8"))
+            if not (username_ok and password_ok):
+                self.send_json(401, {"ok": False, "message": "The username or password is incorrect."})
+                return
+            token = create_session()
+            cookie_value = (
+                f"{SESSION_COOKIE}={token}; Path=/; Max-Age={SESSION_TTL_SECONDS}; "
+                "HttpOnly; SameSite=Strict"
+            )
+            self.send_json(200, {"ok": True}, [("Set-Cookie", cookie_value)])
+            return
+
+        if path == "/api/logout":
+            token = self.session_token()
+            with SESSION_LOCK:
+                SESSIONS.pop(token, None)
+            clear_cookie = f"{SESSION_COOKIE}=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict"
+            self.send_json(200, {"ok": True}, [("Set-Cookie", clear_cookie)])
+            return
+
+        if not self.require_authentication():
+            return
+
         try:
             payload = self.read_json()
             if path == "/api/config":

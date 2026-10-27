@@ -1,0 +1,172 @@
+:root {
+  color-scheme: light;
+  --ink: #1d2823;
+  --muted: #78847d;
+  --green: #347b63;
+  --green-dark: #245a48;
+  --line: #e6ebe6;
+  --orange: #d08843;
+}
+
+* { box-sizing: border-box; }
+html, body { min-height: 100%; }
+body {
+  margin: 0;
+  color: var(--ink);
+  background:
+    radial-gradient(ellipse at 50% 30%, rgba(221, 236, 222, .75), transparent 46%),
+    #f3f6f2;
+  font-family: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+button, input { font: inherit; }
+.login-shell {
+  width: min(100% - 36px, 420px);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  margin: 0 auto;
+  padding: 52px 0 28px;
+}
+.brand {
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+  gap: 10px;
+  margin-bottom: 27px;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -.045em;
+  text-decoration: none;
+}
+.brand img { width: 34px; height: 34px; border-radius: 10px; }
+.login-card {
+  padding: 34px 36px 0;
+  overflow: hidden;
+  border: 1px solid rgba(225, 232, 225, .9);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 22px 65px rgba(31, 54, 42, .09), 0 2px 8px rgba(31, 54, 42, .025);
+}
+.card-mark {
+  width: 43px;
+  height: 43px;
+  display: grid;
+  place-items: center;
+  margin-bottom: 24px;
+  border: 1px solid #deebe1;
+  border-radius: 13px;
+  background: #eff6f0;
+  color: var(--green);
+}
+.card-mark svg { width: 27px; height: 27px; }
+.eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  color: #86928a;
+  font-family: "DM Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: .12em;
+}
+.eyebrow span { width: 6px; height: 6px; border-radius: 50%; background: var(--orange); }
+h1 {
+  margin: 0;
+  font-family: Manrope, "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 31px;
+  font-weight: 750;
+  letter-spacing: -.055em;
+  line-height: 1.15;
+}
+.intro { margin: 9px 0 26px; color: var(--muted); font-size: 13px; line-height: 1.6; }
+form { display: flex; flex-direction: column; gap: 17px; }
+.field { display: flex; flex-direction: column; gap: 8px; color: #39463f; font-size: 11px; font-weight: 700; }
+.field input {
+  width: 100%;
+  height: 45px;
+  padding: 0 12px;
+  border: 1px solid #dfe6df;
+  border-radius: 7px;
+  outline: 0;
+  background: #fcfdfc;
+  color: #27322c;
+  font-size: 13px;
+  font-weight: 500;
+  transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
+}
+.field input:focus { border-color: #79a88e; background: #fff; box-shadow: 0 0 0 3px rgba(52, 123, 99, .12); }
+.password-wrap { position: relative; }
+.password-wrap input { padding-right: 62px; }
+.password-toggle {
+  position: absolute;
+  top: 0;
+  right: 5px;
+  height: 45px;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  color: var(--green);
+  font-size: 10px;
+  font-weight: 700;
+}
+.password-toggle:hover { color: var(--green-dark); }
+.sign-in {
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 2px;
+  padding: 0 15px;
+  border: 0;
+  border-radius: 7px;
+  background: var(--green);
+  color: #fff;
+  box-shadow: 0 5px 13px rgba(52, 123, 99, .17);
+  font-size: 12px;
+  font-weight: 700;
+  transition: background .15s ease, transform .15s ease;
+}
+.sign-in:hover:not(:disabled) { transform: translateY(-1px); background: var(--green-dark); }
+.sign-in:disabled { cursor: wait; opacity: .68; }
+.sign-in span:last-child { font-size: 17px; font-weight: 400; }
+.login-error {
+  margin: -2px 0 0;
+  padding: 10px 11px;
+  border: 1px solid #f0d8d3;
+  border-radius: 6px;
+  background: #fff6f4;
+  color: #a94e44;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.login-error[hidden] { display: none; }
+.card-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 26px -36px 0;
+  padding: 15px 36px;
+  border-top: 1px solid #eef1ed;
+  color: #89948d;
+  font-size: 10px;
+}
+.lock-icon { color: var(--green); font-size: 8px; }
+.page-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 20px;
+  color: #98a29b;
+  font-family: "DM Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 8px;
+  letter-spacing: .08em;
+}
+@media (max-width: 480px) {
+  .login-card { padding: 28px 23px 0; }
+  .card-foot { margin-right: -23px; margin-left: -23px; padding-right: 23px; padding-left: 23px; }
+  .page-foot { font-size: 7px; }
+}

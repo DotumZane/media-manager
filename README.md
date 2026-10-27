@@ -16,7 +16,7 @@ The template maps host port 18473 to the container's WebUI on port 8080. It also
 
 Set the Media Data Root mapping to the host folder that contains both Downloads/Complete and Quarantine. The completed-downloads folder must contain Movies and TV directories. Keeping both folders under one container mount lets the validator hardlink approved files. ClamAV must see those same media files at its configured scan path, which defaults to /scan.
 
-Set a unique WEB_PASSWORD in the template. Open http://<Unraid-IP>:18473 and sign in with username admin and the password you set. The setup page can check paths and service connections before saving.
+Set a unique WEB_PASSWORD in the template. Open http://<Unraid-IP>:18473 and sign in through the Media Manager login page with username admin and the password you set. The app uses a private, time-limited browser session and provides a Sign out button. The setup page can check paths and service connections before saving.
 
 ## Container image
 
