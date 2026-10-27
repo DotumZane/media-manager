@@ -34,6 +34,10 @@
             <span class="nav-icon integration-icon sonarr-icon">S</span><span class="nav-label">Sonarr</span>
             <span class="nav-status" id="sonarr-nav-status" aria-label="Sonarr key not set"></span>
           </button>
+          <div class="nav-caption nav-caption-sub">MONITORING</div>
+          <button class="nav-item" type="button" data-page-target="activity" aria-current="false">
+            <span class="nav-icon" aria-hidden="true">≋</span><span class="nav-label">Activity</span>
+          </button>
         </nav>
 
         <div class="sidebar-bottom">
@@ -205,6 +209,50 @@
               </div>
             </section>
           </form>
+
+          <section class="settings-page" data-settings-page="activity" hidden>
+            <div class="activity-card">
+              <div class="activity-heading">
+                <div class="card-icon activity-icon" aria-hidden="true">≋</div>
+                <div><h2>Activity</h2><p>See what Media Manager has checked and what it is doing now.</p></div>
+                <button class="button button-secondary" id="activity-refresh" type="button">Refresh</button>
+              </div>
+
+              <div class="activity-toolbar">
+                <div class="activity-tabs" role="tablist" aria-label="Activity views">
+                  <button class="activity-tab active" type="button" data-activity-view="history" role="tab" aria-selected="true">Media history</button>
+                  <button class="activity-tab" type="button" data-activity-view="events" role="tab" aria-selected="false">Event log</button>
+                </div>
+                <label class="activity-search">
+                  <span class="search-icon" aria-hidden="true">⌕</span>
+                  <input id="activity-search" type="search" placeholder="Search media history" aria-label="Search activity" />
+                </label>
+              </div>
+
+              <div class="activity-stats" id="activity-stats">
+                <div class="stat-card"><span>Processed</span><strong id="stat-processed">—</strong></div>
+                <div class="stat-card"><span>Rejected</span><strong id="stat-rejected">—</strong></div>
+                <div class="stat-card"><span>Imported</span><strong id="stat-imported">—</strong></div>
+                <div class="stat-card"><span>Waiting on import</span><strong id="stat-waiting">—</strong></div>
+              </div>
+
+              <div class="activity-list" id="activity-list" aria-live="polite"></div>
+              <div class="activity-empty" id="activity-empty" hidden>
+                <span class="empty-mark" aria-hidden="true">⌕</span>
+                <strong id="activity-empty-title">No activity yet</strong>
+                <span id="activity-empty-copy">Processed media and recent events will appear here.</span>
+              </div>
+
+              <div class="activity-pagination">
+                <span id="activity-page-label">Loading activity…</span>
+                <div>
+                  <button class="button button-quiet" id="activity-newer" type="button" disabled>Newer</button>
+                  <button class="button button-quiet" id="activity-older" type="button" disabled>Older</button>
+                </div>
+              </div>
+              <p class="activity-retention">Media history is kept with your app data. The event log keeps the latest 5,000 entries.</p>
+            </div>
+          </section>
 
           <footer class="main-footer"><span>Media Manager settings</span><span>Configuration stays with your app’s runtime data.</span></footer>
         </main>

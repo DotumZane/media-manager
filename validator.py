@@ -16,7 +16,7 @@ from http.cookies import SimpleCookie
 from urllib.error import HTTPError, URLError
 from pathlib import Path
 from datetime import datetime
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 STATE = Path(os.getenv("STATE_DIR", "/state")).expanduser()
 CONFIG_FILE = STATE / "config.json"
@@ -164,7 +164,8 @@ JUNK_VIDEO_WORDS = {
     "behindthescenes", "behind-the-scenes", "extras"
 }
 
-db = sqlite3.connect(STATE / "validator.db")
+DB_LOCK = threading.RLock()
+db = sqlite3.connect(STATE / "validator.db", check_same_thread=False)
 
 db.execute("""
 CREATE TABLE IF NOT EXISTS jobs (
@@ -185,6 +186,20 @@ CREATE TABLE IF NOT EXISTS imports (
     attempts INTEGER NOT NULL DEFAULT 0,
     last_attempt REAL NOT NULL DEFAULT 0
 )
+""")
+
+db.execute("""
+CREATE TABLE IF NOT EXISTS activity_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp TEXT NOT NULL,
+    level TEXT NOT NULL,
+    message TEXT NOT NULL
+)
+""")
+
+db.execute("""
+CREATE INDEX IF NOT EXISTS activity_events_timestamp
+ON activity_events(timestamp)
 """)
 
 db.commit()
@@ -450,6 +465,20 @@ class SetupHandler(BaseHTTPRequestHandler):
         if path == "/api/health":
             self.send_json(200, {"ok": True})
             return
+        if path in ("/api/history", "/api/activity"):
+            try:
+                limit, offset, search = activity_query_params(
+                    urlsplit(self.path).query
+                )
+            except ValueError as exc:
+                self.send_json(400, {"ok": False, "message": str(exc)})
+                return
+            if path == "/api/history":
+                result = get_media_history(limit, offset, search)
+            else:
+                result = get_activity_events(limit, offset, search)
+            self.send_json(200, {"ok": True, **result})
+            return
 
         assets = {
             "/styles.css": ("styles.css", "text/css; charset=utf-8"),
@@ -533,10 +562,39 @@ class SetupHandler(BaseHTTPRequestHandler):
 
 
 def log(msg):
-    print(
-        f"[{datetime.now().isoformat(timespec='seconds')}] {msg}",
-        flush=True
-    )
+    timestamp = datetime.now().isoformat(timespec="seconds")
+    print(f"[{timestamp}] {msg}", flush=True)
+
+    upper = msg.upper()
+    if upper.startswith(("ERROR", "REJECTED", "IMPORT RETRY")):
+        level = "error"
+    elif upper.startswith(("APPROVED", "IMPORT COMPLETE")):
+        level = "success"
+    elif upper.startswith("CHECKING"):
+        level = "working"
+    else:
+        level = "info"
+
+    try:
+        with DB_LOCK:
+            cursor = db.execute(
+                "INSERT INTO activity_events (timestamp, level, message) VALUES (?, ?, ?)",
+                (timestamp, level, msg[:2000]),
+            )
+            if cursor.lastrowid % 500 == 0:
+                db.execute(
+                    """
+                    DELETE FROM activity_events
+                    WHERE id < (
+                        SELECT id FROM activity_events
+                        ORDER BY id DESC LIMIT 1 OFFSET 4999
+                    )
+                    """
+                )
+            db.commit()
+    except sqlite3.Error:
+        # Console logging still works if the history database is unavailable.
+        pass
 
 
 def safe_name(name):
@@ -583,30 +641,128 @@ def job_signature(category, entry, files):
 
 
 def already_processed(signature):
-    row = db.execute(
-        "SELECT 1 FROM jobs WHERE signature=?",
-        (signature,)
-    ).fetchone()
+    with DB_LOCK:
+        row = db.execute(
+            "SELECT 1 FROM jobs WHERE signature=?",
+            (signature,)
+        ).fetchone()
 
     return row is not None
 
 
 def remember(signature, job, result):
-    db.execute(
-        """
-        INSERT OR REPLACE INTO jobs
-        (signature, job, result, timestamp)
-        VALUES (?, ?, ?, ?)
-        """,
-        (
-            signature,
-            job,
-            result,
-            datetime.now().isoformat()
+    with DB_LOCK:
+        db.execute(
+            """
+            INSERT OR REPLACE INTO jobs
+            (signature, job, result, timestamp)
+            VALUES (?, ?, ?, ?)
+            """,
+            (
+                signature,
+                job,
+                result,
+                datetime.now().isoformat()
+            )
         )
-    )
+        db.commit()
 
-    db.commit()
+
+def activity_query_params(query_string):
+    params = parse_qs(query_string)
+    try:
+        limit = int(params.get("limit", ["15"])[0])
+        offset = int(params.get("offset", ["0"])[0])
+    except (TypeError, ValueError):
+        raise ValueError("Activity paging values must be numbers.")
+    if limit < 1 or offset < 0:
+        raise ValueError("Activity paging values are outside the allowed range.")
+    return min(limit, 50), min(offset, 100000), params.get("q", [""])[0][:100].strip()
+
+
+def get_media_history(limit, offset, search):
+    pattern = f"%{search}%"
+    with DB_LOCK:
+        total = db.execute(
+            """
+            SELECT COUNT(*)
+            FROM jobs
+            WHERE (? = '' OR job LIKE ? COLLATE NOCASE OR result LIKE ? COLLATE NOCASE)
+            """,
+            (search, pattern, pattern),
+        ).fetchone()[0]
+        rows = db.execute(
+            """
+            SELECT j.job, j.result, j.timestamp, i.state, i.attempts
+            FROM jobs AS j
+            LEFT JOIN imports AS i ON i.signature = j.signature
+            WHERE (? = '' OR j.job LIKE ? COLLATE NOCASE OR j.result LIKE ? COLLATE NOCASE)
+            ORDER BY j.timestamp DESC, j.rowid DESC
+            LIMIT ? OFFSET ?
+            """,
+            (search, pattern, pattern, limit, offset),
+        ).fetchall()
+        stats = db.execute(
+            """
+            SELECT
+                COUNT(*),
+                COALESCE(SUM(CASE WHEN j.result = 'REJECTED' THEN 1 ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN i.state = 'IMPORTED' OR j.result = 'IMPORTED' THEN 1 ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN j.result != 'REJECTED' AND COALESCE(i.state, 'PENDING') != 'IMPORTED' THEN 1 ELSE 0 END), 0)
+            FROM jobs AS j
+            LEFT JOIN imports AS i ON i.signature = j.signature
+            """
+        ).fetchone()
+
+    items = [
+        {
+            "job": row[0],
+            "result": row[1],
+            "timestamp": row[2],
+            "import_state": row[3],
+            "attempts": row[4] or 0,
+        }
+        for row in rows
+    ]
+    return {
+        "items": items,
+        "total": total,
+        "stats": {
+            "processed": stats[0],
+            "rejected": stats[1],
+            "imported": stats[2],
+            "waiting": stats[3],
+        },
+    }
+
+
+def get_activity_events(limit, offset, search):
+    pattern = f"%{search}%"
+    with DB_LOCK:
+        total = db.execute(
+            """
+            SELECT COUNT(*) FROM activity_events
+            WHERE (? = '' OR message LIKE ? COLLATE NOCASE)
+            """,
+            (search, pattern),
+        ).fetchone()[0]
+        rows = db.execute(
+            """
+            SELECT id, timestamp, level, message
+            FROM activity_events
+            WHERE (? = '' OR message LIKE ? COLLATE NOCASE)
+            ORDER BY id DESC
+            LIMIT ? OFFSET ?
+            """,
+            (search, pattern, limit, offset),
+        ).fetchall()
+    return {
+        "items": [
+            {"id": row[0], "timestamp": row[1], "level": row[2], "message": row[3]}
+            for row in rows
+        ],
+        "total": total,
+    }
 
 
 def clamav_scan(path):
@@ -794,29 +950,29 @@ def queue_import(
     job,
     destination
 ):
-    db.execute(
-        """
-        INSERT OR IGNORE INTO imports
-        (
-            signature,
-            category,
-            job,
-            destination,
-            state,
-            attempts,
-            last_attempt
+    with DB_LOCK:
+        db.execute(
+            """
+            INSERT OR IGNORE INTO imports
+            (
+                signature,
+                category,
+                job,
+                destination,
+                state,
+                attempts,
+                last_attempt
+            )
+            VALUES (?, ?, ?, ?, 'PENDING', 0, 0)
+            """,
+            (
+                signature,
+                category,
+                job,
+                str(destination)
+            )
         )
-        VALUES (?, ?, ?, ?, 'PENDING', 0, 0)
-        """,
-        (
-            signature,
-            category,
-            job,
-            str(destination)
-        )
-    )
-
-    db.commit()
+        db.commit()
 
 
 def arr_details(category, destination):
@@ -913,20 +1069,21 @@ def trigger_arr_import(
 
 def process_pending_imports():
 
-    rows = db.execute(
-        """
-        SELECT
-            signature,
-            category,
-            job,
-            destination,
-            state,
-            attempts,
-            last_attempt
-        FROM imports
-        WHERE state != 'IMPORTED'
-        """
-    ).fetchall()
+    with DB_LOCK:
+        rows = db.execute(
+            """
+            SELECT
+                signature,
+                category,
+                job,
+                destination,
+                state,
+                attempts,
+                last_attempt
+            FROM imports
+            WHERE state != 'IMPORTED'
+            """
+        ).fetchall()
 
     now = time.time()
 
@@ -946,26 +1103,24 @@ def process_pending_imports():
         # the staged file into the final library,
         # the Pending job folder disappears.
         if not destination.exists():
-
-            db.execute(
-                """
-                UPDATE imports
-                SET state='IMPORTED'
-                WHERE signature=?
-                """,
-                (signature,)
-            )
-
-            db.execute(
-                """
-                UPDATE jobs
-                SET result='IMPORTED'
-                WHERE signature=?
-                """,
-                (signature,)
-            )
-
-            db.commit()
+            with DB_LOCK:
+                db.execute(
+                    """
+                    UPDATE imports
+                    SET state='IMPORTED'
+                    WHERE signature=?
+                    """,
+                    (signature,)
+                )
+                db.execute(
+                    """
+                    UPDATE jobs
+                    SET result='IMPORTED'
+                    WHERE signature=?
+                    """,
+                    (signature,)
+                )
+                db.commit()
 
             log(
                 f"IMPORT COMPLETE: {job}"
@@ -986,25 +1141,24 @@ def process_pending_imports():
             except OSError:
                 pass
 
-            db.execute(
-                """
-                UPDATE imports
-                SET state='IMPORTED'
-                WHERE signature=?
-                """,
-                (signature,)
-            )
-
-            db.execute(
-                """
-                UPDATE jobs
-                SET result='IMPORTED'
-                WHERE signature=?
-                """,
-                (signature,)
-            )
-
-            db.commit()
+            with DB_LOCK:
+                db.execute(
+                    """
+                    UPDATE imports
+                    SET state='IMPORTED'
+                    WHERE signature=?
+                    """,
+                    (signature,)
+                )
+                db.execute(
+                    """
+                    UPDATE jobs
+                    SET result='IMPORTED'
+                    WHERE signature=?
+                    """,
+                    (signature,)
+                )
+                db.commit()
 
             log(
                 f"IMPORT COMPLETE: {job}"
@@ -1025,41 +1179,41 @@ def process_pending_imports():
                 destination
             )
 
-            db.execute(
-                """
-                UPDATE imports
-                SET
-                    state='QUEUED',
-                    attempts=attempts+1,
-                    last_attempt=?
-                WHERE signature=?
-                """,
-                (
-                    now,
-                    signature
+            with DB_LOCK:
+                db.execute(
+                    """
+                    UPDATE imports
+                    SET
+                        state='QUEUED',
+                        attempts=attempts+1,
+                        last_attempt=?
+                    WHERE signature=?
+                    """,
+                    (
+                        now,
+                        signature
+                    )
                 )
-            )
-
-            db.commit()
+                db.commit()
 
         except Exception as exc:
 
-            db.execute(
-                """
-                UPDATE imports
-                SET
-                    state='RETRY',
-                    attempts=attempts+1,
-                    last_attempt=?
-                WHERE signature=?
-                """,
-                (
-                    now,
-                    signature
+            with DB_LOCK:
+                db.execute(
+                    """
+                    UPDATE imports
+                    SET
+                        state='RETRY',
+                        attempts=attempts+1,
+                        last_attempt=?
+                    WHERE signature=?
+                    """,
+                    (
+                        now,
+                        signature
+                    )
                 )
-            )
-
-            db.commit()
+                db.commit()
 
             log(
                 f"IMPORT RETRY {job}: {exc}"

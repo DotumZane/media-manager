@@ -6,13 +6,13 @@ Media Manager is a self-hosted web interface for configuring and overseeing the 
 
 The repository includes the MediaValidator source, a guided setup page, an Unraid Community Apps template, and a GitHub Actions workflow that publishes the container image to GitHub Container Registry. The Community Apps catalog listing still needs to be submitted by the maintainer at https://ca.unraid.net/submit/new.
 
-The validator watches the Movies and TV folders under the completed-downloads path, scans files with ClamAV, checks video streams with ffprobe, rejects risky extras, stages approved media in quarantine, and requests imports from Radarr or Sonarr. The setup page configures folders, ClamAV, scan timing, Radarr, and Sonarr without changing the existing validation rules.
+The validator watches the Movies and TV folders under the completed-downloads path, scans files with ClamAV, checks video streams with ffprobe, rejects risky extras, stages approved media in quarantine, and requests imports from Radarr or Sonarr. The setup page configures folders, ClamAV, scan timing, Radarr, and Sonarr without changing the existing validation rules. The Activity section shows processed-media history and a searchable runtime event log.
 
 ## Install on Unraid
 
 After the Community Apps submission is accepted, search for Media Manager in the Unraid Apps tab and install it.
 
-The template maps host port 18473 to the container's WebUI on port 8080. It also creates a persistent appdata mapping at /mnt/user/appdata/media-manager to /state. Keep that mapping in place during updates so the settings and validator history remain available. When replacing an existing MediaValidator container, point /state at the same host folder the old container used.
+The template maps host port 18473 to the container's WebUI on port 8080. It also creates a persistent appdata mapping at /mnt/user/appdata/media-manager to /state. Keep that mapping in place during updates so the settings, processed-media history, and latest 5,000 runtime log events remain available. When replacing an existing MediaValidator container, point /state at the same host folder the old container used.
 
 Set the Media Data Root mapping to the host folder that contains both Downloads/Complete and Quarantine. The completed-downloads folder must contain Movies and TV directories. Keeping both folders under one container mount lets the validator hardlink approved files. ClamAV must see those same media files at its configured scan path, which defaults to /scan.
 

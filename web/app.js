@@ -1,6 +1,13 @@
 const form = document.querySelector("#settings-form");
 const saveButton = document.querySelector("#save-button");
 const saveState = document.querySelector("#save-state");
+const activityPageSize = 15;
+let activePage = "folders";
+let activityView = "history";
+let activityOffset = 0;
+let activityTotal = 0;
+let activityRequestId = 0;
+let activitySearchTimer = null;
 const settingNames = [
   "input_path", "quarantine_path", "clamav_host", "clamav_port",
   "clamav_scan_root", "radarr_url", "radarr_api_key", "radarr_import_root",
@@ -28,6 +35,11 @@ const pages = {
     kicker: "INTEGRATIONS / SONARR",
     title: "Sonarr",
     description: "Connect TV episode imports and choose the folder Sonarr uses for staged files.",
+  },
+  activity: {
+    kicker: "MONITORING / ACTIVITY",
+    title: "Activity",
+    description: "Review processed media, imports, and recent Media Manager events.",
   },
 };
 
@@ -67,6 +79,7 @@ function updateDirtyState() {
 function showPage(name) {
   const page = pages[name];
   if (!page) return;
+  activePage = name;
   for (const panel of document.querySelectorAll("[data-settings-page]")) {
     panel.hidden = panel.dataset.settingsPage !== name;
   }
@@ -79,6 +92,147 @@ function showPage(name) {
   document.querySelector("#page-kicker").textContent = page.kicker;
   document.querySelector("#page-title").textContent = page.title;
   document.querySelector("#page-description").textContent = page.description;
+  if (name === "activity") loadActivity();
+}
+
+function formattedDate(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value || "Unknown time";
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
+}
+
+function createTextElement(tag, className, text) {
+  const element = document.createElement(tag);
+  if (className) element.className = className;
+  element.textContent = text;
+  return element;
+}
+
+function historyStatus(item) {
+  if (item.result === "REJECTED") return { label: "Rejected", className: "rejected" };
+  if (item.import_state === "IMPORTED" || item.result === "IMPORTED") return { label: "Imported", className: "complete" };
+  if (item.import_state === "RETRY") return { label: "Import retry", className: "attention" };
+  if (item.import_state === "QUEUED") return { label: "Import queued", className: "working" };
+  if (item.import_state === "PENDING") return { label: "Waiting to import", className: "waiting" };
+  return { label: "Approved", className: "complete" };
+}
+
+function renderHistory(items) {
+  const list = document.querySelector("#activity-list");
+  list.replaceChildren();
+  for (const item of items) {
+    const row = document.createElement("article");
+    row.className = "activity-row history-row";
+
+    const media = document.createElement("div");
+    media.className = "activity-media";
+    const parts = (item.job || "Unknown item").split("/");
+    const category = parts.length > 1 ? parts.shift() : "Media";
+    media.append(
+      createTextElement("span", "activity-category", category),
+      createTextElement("strong", "activity-name", parts.join("/") || item.job || "Unknown item"),
+    );
+
+    const statusColumn = document.createElement("div");
+    statusColumn.className = "activity-status-column";
+    const status = historyStatus(item);
+    statusColumn.append(createTextElement("span", "status-pill " + status.className, status.label));
+    if (item.attempts > 0) {
+      statusColumn.append(createTextElement("small", "activity-detail", item.attempts + " import attempt" + (item.attempts === 1 ? "" : "s")));
+    }
+
+    const time = document.createElement("time");
+    time.className = "activity-time";
+    time.dateTime = item.timestamp || "";
+    time.textContent = formattedDate(item.timestamp);
+    row.append(media, statusColumn, time);
+    list.append(row);
+  }
+}
+
+function renderEvents(items) {
+  const list = document.querySelector("#activity-list");
+  list.replaceChildren();
+  for (const item of items) {
+    const row = document.createElement("article");
+    row.className = "activity-row event-row";
+    const marker = document.createElement("span");
+    marker.className = "event-marker " + (item.level || "info");
+    marker.setAttribute("aria-hidden", "true");
+    const content = document.createElement("div");
+    content.className = "event-content";
+    const message = createTextElement("span", "event-message", item.message || "");
+    const time = document.createElement("time");
+    time.className = "activity-time";
+    time.dateTime = item.timestamp || "";
+    time.textContent = formattedDate(item.timestamp);
+    content.append(message);
+    row.append(marker, content, time);
+    list.append(row);
+  }
+}
+
+async function loadActivity(silent = false) {
+  if (activePage !== "activity") return;
+  const requestId = ++activityRequestId;
+  const list = document.querySelector("#activity-list");
+  const empty = document.querySelector("#activity-empty");
+  const refresh = document.querySelector("#activity-refresh");
+  const search = document.querySelector("#activity-search").value.trim();
+  const params = new URLSearchParams({
+    limit: String(activityPageSize),
+    offset: String(activityOffset),
+    q: search,
+  });
+  const endpoint = activityView === "history" ? "/api/history" : "/api/activity";
+  refresh.disabled = true;
+  if (!silent) {
+    empty.hidden = true;
+    list.replaceChildren(createTextElement("div", "activity-loading", "Loading activity…"));
+  }
+  try {
+    const response = await requestJSON(endpoint + "?" + params.toString());
+    if (requestId !== activityRequestId) return;
+    activityTotal = response.total;
+    if (activityView === "history") {
+      const stats = response.stats || {};
+      document.querySelector("#stat-processed").textContent = stats.processed || 0;
+      document.querySelector("#stat-rejected").textContent = stats.rejected || 0;
+      document.querySelector("#stat-imported").textContent = stats.imported || 0;
+      document.querySelector("#stat-waiting").textContent = stats.waiting || 0;
+      renderHistory(response.items || []);
+    } else {
+      renderEvents(response.items || []);
+    }
+
+    const hasItems = (response.items || []).length > 0;
+    empty.hidden = hasItems;
+    if (!hasItems) {
+      document.querySelector("#activity-empty-title").textContent = search ? "No matching activity" : "No activity yet";
+      document.querySelector("#activity-empty-copy").textContent = search
+        ? "Try a different search."
+        : (activityView === "history" ? "Processed media will appear here once a file is checked." : "Runtime events will appear here as Media Manager works.");
+    }
+
+    const start = activityTotal ? activityOffset + 1 : 0;
+    const end = Math.min(activityOffset + activityPageSize, activityTotal);
+    document.querySelector("#activity-page-label").textContent =
+      "Showing " + start + "–" + end + " of " + activityTotal;
+    document.querySelector("#activity-newer").disabled = activityOffset === 0;
+    document.querySelector("#activity-older").disabled = activityOffset + activityPageSize >= activityTotal;
+  } catch (error) {
+    if (requestId !== activityRequestId) return;
+    list.replaceChildren();
+    empty.hidden = false;
+    document.querySelector("#activity-empty-title").textContent = "Could not load activity";
+    document.querySelector("#activity-empty-copy").textContent = error.message;
+    document.querySelector("#activity-page-label").textContent = "Activity unavailable";
+  } finally {
+    if (requestId === activityRequestId) refresh.disabled = false;
+  }
 }
 
 function setKeyState(service, saved) {
@@ -130,6 +284,43 @@ document.querySelector("#logout-button").addEventListener("click", async (event)
 for (const item of document.querySelectorAll("[data-page-target]")) {
   item.addEventListener("click", () => showPage(item.dataset.pageTarget));
 }
+
+for (const tab of document.querySelectorAll("[data-activity-view]")) {
+  tab.addEventListener("click", () => {
+    activityView = tab.dataset.activityView;
+    activityOffset = 0;
+    for (const activityTab of document.querySelectorAll("[data-activity-view]")) {
+      const active = activityTab === tab;
+      activityTab.classList.toggle("active", active);
+      activityTab.setAttribute("aria-selected", String(active));
+    }
+    document.querySelector("#activity-stats").hidden = activityView !== "history";
+    document.querySelector("#activity-search").placeholder =
+      activityView === "history" ? "Search media history" : "Search event log";
+    loadActivity();
+  });
+}
+
+document.querySelector("#activity-search").addEventListener("input", () => {
+  window.clearTimeout(activitySearchTimer);
+  activitySearchTimer = window.setTimeout(() => {
+    activityOffset = 0;
+    loadActivity();
+  }, 250);
+});
+
+document.querySelector("#activity-refresh").addEventListener("click", () => loadActivity());
+document.querySelector("#activity-newer").addEventListener("click", () => {
+  activityOffset = Math.max(0, activityOffset - activityPageSize);
+  loadActivity();
+});
+document.querySelector("#activity-older").addEventListener("click", () => {
+  activityOffset += activityPageSize;
+  loadActivity();
+});
+window.setInterval(() => {
+  if (activePage === "activity") loadActivity(true);
+}, 15000);
 
 form.addEventListener("input", () => {
   updateDirtyState();
