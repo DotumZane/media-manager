@@ -12,7 +12,7 @@ The setup page lets you configure container paths, ClamAV, scan timing, Radarr, 
 
 Build the image from this folder, then run it on the same Docker network as ClamAV, Radarr, and Sonarr. Mount persistent storage at /state, the completed-downloads folder at /data/Downloads/Complete, and the quarantine folder at /data/Quarantine. ClamAV must see the same media files at the path configured as its scan root (default /scan).
 
-Set WEB_PASSWORD in the container configuration before opening the setup page. The page uses HTTP Basic Authentication with username admin. Publish container port 8080 on an unused host port; for example, map host port 18080 to container port 8080, then open http://<server>:18080 from your trusted home network. If 18080 is already in use, choose another unused host port; the app can keep listening on container port 8080.
+Set WEB_PASSWORD in the container configuration before opening the setup page. The page uses HTTP Basic Authentication with username admin. Map host port 18473 to container port 8080, then open http://<server>:18473 from your trusted home network. The app can keep listening on container port 8080, so this avoids a conflict with another container using host port 8080.
 
 ## Credentials and Git
 
