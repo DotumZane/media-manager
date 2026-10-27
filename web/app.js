@@ -394,7 +394,7 @@ document.querySelector("#vpn-check-now").addEventListener("click", async (event)
   try {
     const response = await requestJSON("/api/vpn/check", {});
     renderVpnStatus(response.status || {});
-    const safe = response.status && response.status.state === "protected";
+    const safe = response.status && response.status.check_ok === true;
     setResult(result, response.status?.last_message || "Check complete.", safe ? "success" : "error");
   } catch (error) {
     setResult(result, error.message, "error");

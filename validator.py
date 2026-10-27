@@ -260,6 +260,7 @@ VPN_STATUS = {
     "last_check": "",
     "check_ip": "",
     "container_ip": "",
+    "check_ok": None,
     "consecutive_failures": 0,
     "tripped": False,
     "last_message": "VPN Guard is turned off.",
@@ -404,6 +405,7 @@ def record_vpn_failure(settings, containers, timestamp, failure, check_address="
         return set_vpn_status(
             state="warning", enabled=settings["vpn_enabled"], last_check=timestamp,
             check_ip=masked_ip(check_address), container_ip=masked_ip(container_address),
+            check_ok=False,
             last_message=failure,
         )
 
@@ -411,6 +413,7 @@ def record_vpn_failure(settings, containers, timestamp, failure, check_address="
     set_vpn_status(
         state="warning", enabled=settings["vpn_enabled"], last_check=timestamp,
         check_ip=masked_ip(check_address), container_ip=masked_ip(container_address),
+        check_ok=False,
         consecutive_failures=failures, last_message=failure,
     )
     if failures < settings["vpn_failure_threshold"]:
@@ -465,14 +468,15 @@ def run_vpn_check(trigger=True):
                 return set_vpn_status(
                     state="unavailable", enabled=settings["vpn_enabled"],
                     last_check=timestamp, last_message="The selected VPN check container is unavailable.",
-                    check_ip="", container_ip="",
+                    check_ip="", container_ip="", check_ok=None,
                 )
             if not monitor["running"]:
                 return set_vpn_status(
                     state="waiting", enabled=settings["vpn_enabled"],
                     last_check=timestamp,
                     last_message=f"Waiting for {monitor['name']} to start.",
-                    check_ip="", container_ip="", consecutive_failures=0,
+                    check_ip="", container_ip="", check_ok=None,
+                    consecutive_failures=0,
                 )
 
             check_address = ""
@@ -508,6 +512,7 @@ def run_vpn_check(trigger=True):
                 set_vpn_status(
                     state=success_state, enabled=settings["vpn_enabled"], last_check=timestamp,
                     check_ip=masked_ip(check_address), container_ip=masked_ip(container_address),
+                    check_ok=True,
                     consecutive_failures=0,
                     last_message=success_message,
                 )
@@ -526,7 +531,7 @@ def run_vpn_check(trigger=True):
             previous_status = read_vpn_status()
             set_vpn_status(
                 state="unavailable", enabled=settings["vpn_enabled"],
-                last_check=timestamp, last_message=message,
+                last_check=timestamp, last_message=message, check_ok=None,
             )
             if previous_status.get("state") != "unavailable" or previous_status.get("last_message") != message:
                 log("VPN GUARD: " + message)
