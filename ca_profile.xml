@@ -1,0 +1,5 @@
+<CommunityApplications>
+  <Profile>Media Manager provides a guided Unraid setup page for MediaValidator. Configure media folders, ClamAV, scan timing, Radarr, and Sonarr, then test connections before saving. For support, use the GitHub Issues page linked from the application template.</Profile>
+  <Icon>https://raw.githubusercontent.com/DotumZane/media-manager/main/icon.svg</Icon>
+  <WebPage>https://github.com/DotumZane/media-manager</WebPage>
+</CommunityApplications>

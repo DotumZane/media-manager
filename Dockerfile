@@ -1,5 +1,9 @@
 FROM python:3.12-slim
 
+LABEL org.opencontainers.image.source="https://github.com/DotumZane/media-manager" \
+    org.opencontainers.image.title="Media Manager" \
+    org.opencontainers.image.description="A self-hosted MediaValidator with a guided web setup page."
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 

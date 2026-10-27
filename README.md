@@ -4,21 +4,29 @@ Media Manager is a self-hosted web interface for configuring and overseeing the 
 
 ## Current status
 
-The repository now includes the MediaValidator source, its container image, and a first-run setup page. The validator continues to watch the Movies and TV folders under the completed-downloads path, scan files with ClamAV, check video streams with ffprobe, reject risky extras, stage approved media in quarantine, and request imports from Radarr or Sonarr.
+The repository includes the MediaValidator source, a guided setup page, an Unraid Community Apps template, and a GitHub Actions workflow that publishes the container image to GitHub Container Registry. The Community Apps catalog listing still needs to be submitted by the maintainer at https://ca.unraid.net/submit/new.
 
-The setup page lets you configure container paths, ClamAV, scan timing, Radarr, and Sonarr. It can check folder access and service connections before you save. The current validation rules remain unchanged.
+The validator watches the Movies and TV folders under the completed-downloads path, scans files with ClamAV, checks video streams with ffprobe, rejects risky extras, stages approved media in quarantine, and requests imports from Radarr or Sonarr. The setup page configures folders, ClamAV, scan timing, Radarr, and Sonarr without changing the existing validation rules.
 
-## Run the container
+## Install on Unraid
 
-Build the image from this folder, then run it on the same Docker network as ClamAV, Radarr, and Sonarr. Mount persistent storage at /state, the completed-downloads folder at /data/Downloads/Complete, and the quarantine folder at /data/Quarantine. ClamAV must see the same media files at the path configured as its scan root (default /scan).
+After the Community Apps submission is accepted, search for Media Manager in the Unraid Apps tab and install it.
 
-Set WEB_PASSWORD in the container configuration before opening the setup page. The page uses HTTP Basic Authentication with username admin. Map host port 18473 to container port 8080, then open http://<server>:18473 from your trusted home network. The app can keep listening on container port 8080, so this avoids a conflict with another container using host port 8080.
+The template maps host port 18473 to the container's WebUI on port 8080. It also creates a persistent appdata mapping at /mnt/user/appdata/media-manager to /state. Keep that mapping in place during updates so the settings and validator history remain available. When replacing an existing MediaValidator container, point /state at the same host folder the old container used.
+
+Set the Media Data Root mapping to the host folder that contains both Downloads/Complete and Quarantine. The completed-downloads folder must contain Movies and TV directories. Keeping both folders under one container mount lets the validator hardlink approved files. ClamAV must see those same media files at its configured scan path, which defaults to /scan.
+
+Set a unique WEB_PASSWORD in the template. Open http://<Unraid-IP>:18473 and sign in with username admin and the password you set. The setup page can check paths and service connections before saving.
+
+## Container image
+
+The image is published as ghcr.io/dotumzane/media-manager:latest. The workflow also publishes commit-tagged images for rollback and pinning.
 
 ## Credentials and Git
 
-- Radarr and Sonarr API keys are accepted through the setup page and stored in /state/config.json with owner-only file permissions.
-- Saved API keys are never returned to the browser. Leave a key field blank to keep the saved key; use its remove checkbox to clear it.
-- .gitignore excludes local environment files, runtime configuration, state folders, and database files. Do not add /state/config.json, .env, or deployment-specific secrets to Git.
+- Radarr and Sonarr API keys are entered through the setup page and stored in /state/config.json with owner-only file permissions.
+- Saved API keys are never returned to the browser. Leave a key field blank to keep a saved key; use its remove checkbox to clear it.
+- .gitignore and .dockerignore exclude local environment files, runtime configuration, state folders, and database files. Do not commit /state/config.json, .env, or deployment-specific secrets.
 - The source reads RADARR_API_KEY and SONARR_API_KEY from environment variables for compatibility, but contains no key values.
 - The setup UI uses HTTP. Keep it on a trusted local network; use HTTPS through a protected proxy for remote access.
 
@@ -31,4 +39,4 @@ The setup page exposes the validator's current configurable values:
 - Scan interval, file-settle time, and Radarr/Sonarr import retry interval.
 - Radarr and Sonarr URLs, API keys, and their import paths.
 
-Initial defaults are based on the existing validator, with a generic clamav hostname instead of a private network address. The state database remains under /state/validator.db.
+The public source uses the generic ClamAV hostname clamav instead of publishing the prior private network address. If your setup uses another host, set it in the setup page. The state database remains at /state/validator.db.
