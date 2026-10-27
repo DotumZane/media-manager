@@ -35,6 +35,10 @@
             <span class="nav-status" id="sonarr-nav-status" aria-label="Sonarr key not set"></span>
           </button>
           <div class="nav-caption nav-caption-sub">MONITORING</div>
+          <button class="nav-item" type="button" data-page-target="vpn-guard" aria-current="false">
+            <span class="nav-icon vpn-icon" aria-hidden="true">⛨</span><span class="nav-label">VPN Guard</span>
+            <span class="nav-status" id="vpn-nav-status" aria-label="VPN Guard is off"></span>
+          </button>
           <button class="nav-item" type="button" data-page-target="activity" aria-current="false">
             <span class="nav-icon" aria-hidden="true">≋</span><span class="nav-label">Activity</span>
           </button>
@@ -206,6 +210,78 @@
                     <span class="test-result" id="result-sonarr" aria-live="polite"></span>
                   </div>
                 </div>
+              </div>
+            </section>
+
+            <section class="settings-page" data-settings-page="vpn-guard" hidden>
+              <div class="settings-card vpn-card">
+                <div class="card-heading">
+                  <div class="card-icon vpn-icon" aria-hidden="true">⛨</div>
+                  <div><h2>VPN Guard</h2><p>Check that your selected container is using the VPN, then stop chosen containers if the check fails.</p></div>
+                  <span class="vpn-state-pill" id="vpn-state-pill">Off</span>
+                </div>
+
+                <div class="vpn-status-panel" aria-live="polite">
+                  <div class="vpn-status-message">
+                    <strong id="vpn-state-title">VPN Guard is off</strong>
+                    <span id="vpn-state-message">Turn it on after choosing the container to check and what to stop.</span>
+                  </div>
+                  <div class="vpn-status-details">
+                    <div><span>Last check</span><strong id="vpn-last-check">Not checked</strong></div>
+                    <div><span>Media Manager IP</span><strong id="vpn-manager-ip">—</strong></div>
+                    <div><span>Checked container IP</span><strong id="vpn-container-ip">—</strong></div>
+                    <div><span>Failed checks</span><strong id="vpn-failure-count">0</strong></div>
+                  </div>
+                </div>
+
+                <div class="vpn-docker-warning" id="vpn-docker-warning" hidden>
+                  <strong>Docker connection needed</strong>
+                  <span id="vpn-docker-warning-copy">Set the Docker socket host path to /var/run/docker.sock in Unraid to load containers.</span>
+                </div>
+
+                <label class="toggle-field">
+                  <input name="vpn_enabled" type="checkbox" />
+                  <span class="toggle-track" aria-hidden="true"></span>
+                  <span><strong>Enable VPN Guard</strong><small>Checks in the background while the selected check container is running.</small></span>
+                </label>
+
+                <div class="field-grid two vpn-fields">
+                  <label class="field">
+                    <span>Container to check</span>
+                    <select name="vpn_check_container" id="vpn-check-container" required>
+                      <option value="">Loading containers…</option>
+                    </select>
+                    <small>Usually qBittorrent. It compares with Media Manager’s public IP; the container needs curl and sh.</small>
+                  </label>
+                  <label class="field">
+                    <span>Check every</span>
+                    <div class="input-suffix"><input name="vpn_check_interval" type="number" min="5" max="120" required /><span>seconds</span></div>
+                    <small>Unraid’s regular watchdog used a 5 second interval.</small>
+                  </label>
+                  <label class="field">
+                    <span>Failures before stopping</span>
+                    <div class="input-suffix"><input name="vpn_failure_threshold" type="number" min="1" max="10" required /><span>checks</span></div>
+                    <small>Three checks helps avoid a shutdown from one brief lookup failure.</small>
+                  </label>
+                  <div class="field">
+                    <span>Containers to stop</span>
+                    <small>Select the apps that should stop if the VPN check fails.</small>
+                    <div class="vpn-container-list" id="vpn-shutdown-list"><span class="vpn-list-empty">Loading containers…</span></div>
+                  </div>
+                </div>
+
+                <div class="vpn-actions">
+                  <div class="action-group">
+                    <button class="button button-secondary" type="button" id="vpn-refresh-containers">Refresh container list</button>
+                    <button class="button button-secondary" type="button" id="vpn-check-now">Check now</button>
+                    <span class="test-result" id="vpn-action-result" aria-live="polite"></span>
+                  </div>
+                  <button class="button button-quiet" type="button" id="vpn-rearm">Re-arm after a stop</button>
+                </div>
+
+                <p class="vpn-check-note">When VPN Guard is enabled, Check now counts as a live check and can trigger the shutdown rule.</p>
+
+                <div class="vpn-security-note"><strong>Server access</strong><span>Container discovery and stopping use Unraid’s Docker connection. Keep Media Manager on a trusted network and use a strong sign-in password. Re-arming does not restart stopped containers.</span></div>
               </div>
             </section>
           </form>

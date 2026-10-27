@@ -6,17 +6,19 @@ import json
 import socket
 import sqlite3
 import hashlib
+import ipaddress
 import shutil
 import subprocess
 import tempfile
 import threading
+import http.client
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from http.cookies import SimpleCookie
 from urllib.error import HTTPError, URLError
 from pathlib import Path
 from datetime import datetime
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, quote, urlsplit
 
 STATE = Path(os.getenv("STATE_DIR", "/state")).expanduser()
 CONFIG_FILE = STATE / "config.json"
@@ -49,6 +51,11 @@ def default_settings():
         "scan_interval": os.getenv("SCAN_INTERVAL", "60"),
         "settle_seconds": os.getenv("SETTLE_SECONDS", "120"),
         "import_retry_seconds": os.getenv("IMPORT_RETRY_SECONDS", "300"),
+        "vpn_enabled": False,
+        "vpn_check_container": "",
+        "vpn_shutdown_containers": [],
+        "vpn_check_interval": "5",
+        "vpn_failure_threshold": "3",
     }
 
 
@@ -66,6 +73,27 @@ def normalize_settings(raw):
         if not isinstance(value, str):
             raise ValueError(f"{field.replace('_', ' ').capitalize()} must be text.")
         settings[field] = value.strip()
+
+    if not isinstance(settings["vpn_enabled"], bool):
+        raise ValueError("VPN Guard enabled must be true or false.")
+    for field in ("vpn_check_container",):
+        value = settings[field]
+        if not isinstance(value, str):
+            raise ValueError(f"{field.replace('_', ' ').capitalize()} must be text.")
+        settings[field] = value.strip()
+    shutdown_containers = settings["vpn_shutdown_containers"]
+    if not isinstance(shutdown_containers, list) or len(shutdown_containers) > 50:
+        raise ValueError("Choose no more than 50 containers for VPN Guard to stop.")
+    normalized_containers = []
+    for name in shutdown_containers:
+        if not isinstance(name, str):
+            raise ValueError("VPN Guard container names must be text.")
+        name = name.strip()
+        if not name or len(name) > 128 or any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-" for c in name):
+            raise ValueError("A selected VPN Guard container name is invalid.")
+        if name not in normalized_containers:
+            normalized_containers.append(name)
+    settings["vpn_shutdown_containers"] = normalized_containers
 
     for field in ("input_path", "quarantine_path", "radarr_import_root", "sonarr_import_root", "clamav_scan_root"):
         if not Path(settings[field]).is_absolute():
@@ -85,6 +113,8 @@ def normalize_settings(raw):
         ("scan_interval", 1, 3600),
         ("settle_seconds", 0, 86400),
         ("import_retry_seconds", 1, 86400),
+        ("vpn_check_interval", 5, 120),
+        ("vpn_failure_threshold", 1, 10),
     ):
         try:
             settings[field] = int(settings[field])
@@ -103,6 +133,11 @@ def normalize_settings(raw):
                 raise ValueError(f"{label} URL cannot contain credentials, query parameters, or a fragment.")
         settings[field] = value
 
+    if settings["vpn_enabled"]:
+        if not settings["vpn_check_container"]:
+            raise ValueError("Choose the container whose VPN connection should be checked.")
+        if not settings["vpn_shutdown_containers"]:
+            raise ValueError("Choose at least one container to stop if the VPN check fails.")
     return settings
 
 
@@ -214,6 +249,300 @@ def public_settings():
         result["radarr_api_key_set"] = bool(CONFIG["radarr_api_key"])
         result["sonarr_api_key_set"] = bool(CONFIG["sonarr_api_key"])
         return result
+
+
+DOCKER_SOCKET_PATH = os.getenv("DOCKER_SOCKET", "/var/run/docker.sock")
+VPN_STATUS_LOCK = threading.RLock()
+VPN_CHECK_LOCK = threading.Lock()
+VPN_STATUS = {
+    "state": "disabled",
+    "enabled": False,
+    "last_check": "",
+    "check_ip": "",
+    "container_ip": "",
+    "consecutive_failures": 0,
+    "tripped": False,
+    "last_message": "VPN Guard is turned off.",
+    "stopped_containers": [],
+}
+
+
+class UnixSocketHTTPConnection(http.client.HTTPConnection):
+    def __init__(self, socket_path, timeout=5):
+        super().__init__("localhost", timeout=timeout)
+        self.socket_path = socket_path
+
+    def connect(self):
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.settimeout(self.timeout)
+        sock.connect(self.socket_path)
+        self.sock = sock
+
+
+def docker_request(method, path, payload=None, timeout=5):
+    connection = UnixSocketHTTPConnection(DOCKER_SOCKET_PATH, timeout=timeout)
+    body = None if payload is None else json.dumps(payload).encode("utf-8")
+    headers = {"Content-Type": "application/json"} if body is not None else {}
+    try:
+        connection.request(method, "/v1.41" + path, body=body, headers=headers)
+        response = connection.getresponse()
+        response_body = response.read(1024 * 1024)
+        if not 200 <= response.status < 300:
+            detail = response_body.decode("utf-8", "replace")[:300]
+            raise RuntimeError(f"Docker returned HTTP {response.status}: {detail}")
+        return response_body
+    finally:
+        connection.close()
+
+
+def is_media_manager_container(item, container_id):
+    current_id = socket.gethostname().lower()
+    labels = item.get("Labels") or {}
+    image = str(item.get("Image", "")).lower()
+    has_app_label = labels.get("org.opencontainers.image.title") == "Media Manager"
+    is_manager_image = "media-manager" in image
+    return container_id.startswith(current_id) or (has_app_label and is_manager_image)
+
+
+def docker_container_records():
+    body = docker_request("GET", "/containers/json?all=1")
+    containers = json.loads(body.decode("utf-8"))
+    result = []
+    for item in containers:
+        container_id = str(item.get("Id", ""))
+        names = item.get("Names") or []
+        name = str(names[0] if names else "").lstrip("/")
+        if not name or is_media_manager_container(item, container_id):
+            continue
+        result.append({
+            "id": container_id,
+            "name": name,
+            "running": str(item.get("State", "unknown")) == "running",
+            "state": str(item.get("State", "unknown")),
+            "status": str(item.get("Status", ""))[:100],
+        })
+    return sorted(result, key=lambda item: item["name"].lower())
+
+
+def public_ip():
+    request = urllib.request.Request(
+        "https://api.ipify.org",
+        headers={"User-Agent": "MediaManager-VPNGuard/1.0"},
+    )
+    with urllib.request.urlopen(request, timeout=5) as response:
+        value = response.read(128).decode("ascii", "ignore").strip()
+    return str(ipaddress.ip_address(value))
+
+
+def container_public_ip(container_id):
+    encoded_id = quote(container_id, safe="")
+    command = [
+        "sh", "-c",
+        "curl -fsS --max-time 5 https://api.ipify.org",
+    ]
+    create = docker_request(
+        "POST",
+        f"/containers/{encoded_id}/exec",
+        {"AttachStdout": True, "AttachStderr": True, "Tty": False, "Cmd": command},
+    )
+    exec_id = json.loads(create.decode("utf-8"))["Id"]
+    encoded_exec_id = quote(exec_id, safe="")
+    output = docker_request(
+        "POST",
+        f"/exec/{encoded_exec_id}/start",
+        {"Detach": False, "Tty": False},
+        timeout=8,
+    )
+    exit_info = docker_request("GET", f"/exec/{encoded_exec_id}/json")
+    exit_code = json.loads(exit_info.decode("utf-8")).get("ExitCode")
+    stdout = bytearray()
+    if output and len(output) >= 8 and output[0] in (1, 2):
+        cursor = 0
+        while cursor + 8 <= len(output):
+            size = int.from_bytes(output[cursor + 4:cursor + 8], "big")
+            cursor += 8
+            chunk = output[cursor:cursor + size]
+            cursor += size
+            stdout.extend(chunk)
+    else:
+        stdout.extend(output)
+    value = stdout.decode("ascii", "ignore").strip()
+    if exit_code != 0 or not value:
+        raise RuntimeError("The selected container could not check its public IP. Confirm it is running and has curl installed.")
+    return str(ipaddress.ip_address(value))
+
+
+def masked_ip(value):
+    try:
+        address = ipaddress.ip_address(value)
+    except ValueError:
+        return ""
+    if address.version == 4:
+        parts = str(address).split(".")
+        return ".".join(parts[:3]) + ".×"
+    return ":".join(address.exploded.split(":")[:4]) + ":…"
+
+
+def read_vpn_status():
+    with VPN_STATUS_LOCK:
+        return dict(VPN_STATUS)
+
+
+def set_vpn_status(**updates):
+    with VPN_STATUS_LOCK:
+        VPN_STATUS.update(updates)
+        return dict(VPN_STATUS)
+
+
+def stop_container(container_id, grace_seconds=10):
+    encoded_id = quote(container_id, safe="")
+    docker_request("POST", f"/containers/{encoded_id}/stop?t={int(grace_seconds)}", timeout=8)
+
+
+def record_vpn_failure(settings, containers, timestamp, failure, check_address="", container_address="", trigger=True):
+    if not trigger:
+        return set_vpn_status(
+            state="warning", enabled=settings["vpn_enabled"], last_check=timestamp,
+            check_ip=masked_ip(check_address), container_ip=masked_ip(container_address),
+            last_message=failure,
+        )
+
+    failures = int(read_vpn_status().get("consecutive_failures", 0)) + 1
+    set_vpn_status(
+        state="warning", enabled=settings["vpn_enabled"], last_check=timestamp,
+        check_ip=masked_ip(check_address), container_ip=masked_ip(container_address),
+        consecutive_failures=failures, last_message=failure,
+    )
+    if failures < settings["vpn_failure_threshold"]:
+        log(f"VPN GUARD: Check failed ({failures}/{settings['vpn_failure_threshold']}); confirming before stopping containers.")
+        return read_vpn_status()
+
+    selected = set(settings["vpn_shutdown_containers"])
+    stopped = []
+    stop_errors = []
+    for item in containers:
+        if item["name"] not in selected or not item["running"]:
+            continue
+        try:
+            stop_container(item["id"])
+            stopped.append(item["name"])
+        except Exception as exc:
+            stop_errors.append(f"{item['name']}: {str(exc)[:160]}")
+    message = f"VPN Guard triggered: {failure}"
+    if stopped:
+        message += " Stopped: " + ", ".join(stopped) + "."
+    if stop_errors:
+        message += " Stop errors: " + "; ".join(stop_errors)
+    set_vpn_status(
+        state="tripped", enabled=settings["vpn_enabled"], tripped=True,
+        stopped_containers=stopped, last_message=message,
+    )
+    log("ERROR " + message)
+    return read_vpn_status()
+
+
+def run_vpn_check(trigger=True):
+    with VPN_CHECK_LOCK:
+        with CONFIG_LOCK:
+            settings = dict(CONFIG)
+            settings["vpn_shutdown_containers"] = list(CONFIG["vpn_shutdown_containers"])
+        if read_vpn_status().get("tripped"):
+            return read_vpn_status()
+        if trigger and not settings["vpn_enabled"]:
+            return set_vpn_status(
+                state="disabled", enabled=False, last_message="VPN Guard is turned off."
+            )
+
+        set_vpn_status(state="checking", enabled=settings["vpn_enabled"])
+        timestamp = datetime.now().astimezone().isoformat(timespec="seconds")
+        try:
+            containers = docker_container_records()
+            monitor = next(
+                (item for item in containers if item["name"] == settings["vpn_check_container"]),
+                None,
+            )
+            if not monitor:
+                return set_vpn_status(
+                    state="unavailable", enabled=settings["vpn_enabled"],
+                    last_check=timestamp, last_message="The selected VPN check container is unavailable.",
+                    check_ip="", container_ip="",
+                )
+            if not monitor["running"]:
+                return set_vpn_status(
+                    state="waiting", enabled=settings["vpn_enabled"],
+                    last_check=timestamp,
+                    last_message=f"Waiting for {monitor['name']} to start.",
+                    check_ip="", container_ip="", consecutive_failures=0,
+                )
+
+            check_address = ""
+            container_address = ""
+            check_error = ""
+            try:
+                check_address = public_ip()
+            except Exception:
+                check_error = "Media Manager could not determine its public IP."
+            try:
+                container_address = container_public_ip(monitor["id"])
+            except Exception:
+                check_error = "The monitored container could not reach the public IP check service."
+
+            if check_error:
+                return record_vpn_failure(
+                    settings, containers, timestamp, check_error,
+                    check_address, container_address, trigger,
+                )
+            if check_address == container_address:
+                failure = "The monitored container is using the same public IP as Media Manager."
+                check_ok = False
+            else:
+                failure = "The monitored container public IP could not be verified as different."
+                check_ok = bool(check_address and container_address)
+            if check_ok:
+                previous_status = read_vpn_status()
+                previous_failures = previous_status.get("consecutive_failures", 0)
+                success_state = "protected" if settings["vpn_enabled"] else "disabled"
+                success_message = f"{monitor['name']} is using a different public IP."
+                if not settings["vpn_enabled"]:
+                    success_message += " VPN Guard is off."
+                set_vpn_status(
+                    state=success_state, enabled=settings["vpn_enabled"], last_check=timestamp,
+                    check_ip=masked_ip(check_address), container_ip=masked_ip(container_address),
+                    consecutive_failures=0,
+                    last_message=success_message,
+                )
+                if previous_failures:
+                    log(f"VPN GUARD: Connection check recovered for {monitor['name']}.")
+                elif previous_status.get("state") != "protected":
+                    log(f"VPN GUARD: Connection verified for {monitor['name']}.")
+                return read_vpn_status()
+
+            return record_vpn_failure(
+                settings, containers, timestamp, failure,
+                check_address, container_address, trigger,
+            )
+        except Exception as exc:
+            message = f"VPN Guard check unavailable: {str(exc)[:240]}"
+            previous_status = read_vpn_status()
+            set_vpn_status(
+                state="unavailable", enabled=settings["vpn_enabled"],
+                last_check=timestamp, last_message=message,
+            )
+            if previous_status.get("state") != "unavailable" or previous_status.get("last_message") != message:
+                log("VPN GUARD: " + message)
+            return read_vpn_status()
+
+
+def vpn_guard_worker():
+    while True:
+        with CONFIG_LOCK:
+            enabled = CONFIG["vpn_enabled"]
+            interval = CONFIG["vpn_check_interval"]
+        if enabled and not read_vpn_status().get("tripped"):
+            run_vpn_check(trigger=True)
+        elif not enabled:
+            set_vpn_status(state="disabled", enabled=False, last_message="VPN Guard is turned off.")
+        time.sleep(interval if enabled else 2)
 
 
 def request_settings(payload, allow_clear=False):
@@ -465,6 +794,30 @@ class SetupHandler(BaseHTTPRequestHandler):
         if path == "/api/health":
             self.send_json(200, {"ok": True})
             return
+        if path == "/api/vpn":
+            try:
+                containers = docker_container_records()
+                self.send_json(200, {
+                    "ok": True,
+                    "docker_available": True,
+                    "containers": [
+                        {key: value for key, value in item.items() if key != "id"}
+                        for item in containers
+                    ],
+                    "status": read_vpn_status(),
+                })
+            except Exception:
+                self.send_json(200, {
+                    "ok": True,
+                    "docker_available": False,
+                    "containers": [],
+                    "status": read_vpn_status(),
+                    "message": "In the Unraid container settings, set the Docker socket host path to /var/run/docker.sock.",
+                })
+            return
+        if path == "/api/vpn/status":
+            self.send_json(200, {"ok": True, "status": read_vpn_status()})
+            return
         if path in ("/api/history", "/api/activity"):
             try:
                 limit, offset, search = activity_query_params(
@@ -537,8 +890,34 @@ class SetupHandler(BaseHTTPRequestHandler):
         try:
             payload = self.read_json()
             if path == "/api/config":
+                was_vpn_enabled = CONFIG["vpn_enabled"]
                 settings = persist_settings(payload)
+                if not settings["vpn_enabled"]:
+                    set_vpn_status(
+                        state="disabled", enabled=False,
+                        tripped=False, consecutive_failures=0,
+                        stopped_containers=[],
+                        last_message="VPN Guard is turned off.",
+                    )
+                if settings["vpn_enabled"] != was_vpn_enabled:
+                    log("VPN GUARD: " + ("Enabled." if settings["vpn_enabled"] else "Disabled."))
                 self.send_json(200, {"ok": True, "settings": settings})
+                return
+
+            if path == "/api/vpn/check":
+                result = run_vpn_check(trigger=CONFIG["vpn_enabled"])
+                self.send_json(200, {"ok": result["state"] not in ("unavailable", "warning", "tripped"), "status": result})
+                return
+
+            if path == "/api/vpn/rearm":
+                set_vpn_status(
+                    state="waiting" if CONFIG["vpn_enabled"] else "disabled",
+                    enabled=CONFIG["vpn_enabled"], tripped=False,
+                    consecutive_failures=0, stopped_containers=[],
+                    last_message="VPN Guard re-armed. It will not restart stopped containers.",
+                )
+                log("VPN GUARD: Manually re-armed. Stopped containers were not restarted.")
+                self.send_json(200, {"ok": True, "status": read_vpn_status()})
                 return
 
             candidate = request_settings(payload)
@@ -568,9 +947,9 @@ def log(msg):
     upper = msg.upper()
     if upper.startswith(("ERROR", "REJECTED", "IMPORT RETRY")):
         level = "error"
-    elif upper.startswith(("APPROVED", "IMPORT COMPLETE")):
+    elif upper.startswith(("APPROVED", "IMPORT COMPLETE", "VPN GUARD: CONNECTION VERIFIED", "VPN GUARD: CONNECTION CHECK RECOVERED")):
         level = "success"
-    elif upper.startswith("CHECKING"):
+    elif upper.startswith(("CHECKING", "VPN GUARD: CHECK FAILED")):
         level = "working"
     else:
         level = "info"
@@ -1502,6 +1881,13 @@ web_thread = threading.Thread(
     daemon=True,
 )
 web_thread.start()
+
+vpn_thread = threading.Thread(
+    target=vpn_guard_worker,
+    name="vpn-guard",
+    daemon=True,
+)
+vpn_thread.start()
 
 while True:
     try:

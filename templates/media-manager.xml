@@ -14,11 +14,12 @@
   <TemplateURL>https://raw.githubusercontent.com/DotumZane/media-manager/main/templates/media-manager.xml</TemplateURL>
   <ReadMe>https://raw.githubusercontent.com/DotumZane/media-manager/main/README.md</ReadMe>
   <Category>Tools:Utilities</Category>
-  <Requires>ClamAV, Radarr, and Sonarr must be running separately. Mount the same media files in Media Manager and ClamAV.</Requires>
+  <Requires>ClamAV, Radarr, and Sonarr must be running separately. Mount the same media files in Media Manager and ClamAV. VPN Guard is optional and needs the Docker socket mount.</Requires>
   <MinVer>6.12</MinVer>
   <License>MIT</License>
   <Config Name="Setup UI Port" Target="8080" Default="18473" Mode="tcp" Description="Unraid host port for the setup page." Type="Port" Display="always" Required="true" Mask="false"/>
   <Config Name="Appdata" Target="/state" Default="/mnt/user/appdata/media-manager" Mode="rw" Description="Persistent settings and validator history. Keep this mapping during updates." Type="Path" Display="always" Required="true" Mask="false"/>
+  <Config Name="Docker socket (VPN Guard)" Target="/var/run/docker.sock" Default="" Mode="rw" Description="Optional. Set the host path to /var/run/docker.sock to let VPN Guard list containers and stop selected ones. This grants broad control of the Unraid server." Type="Path" Display="always" Required="false" Mask="false"/>
   <Config Name="Media Data Root" Target="/data" Default="/mnt/user/data" Mode="rw" Description="Common host folder containing Downloads/Complete and Quarantine. Keep both under this mount for hardlinks; change to your existing data share." Type="Path" Display="always" Required="true" Mask="false"/>
   <Config Name="Web UI Password" Target="WEB_PASSWORD" Default="" Description="Required password for the setup page. Username is admin." Type="Variable" Display="always" Required="true" Mask="true"/>
 </Container>
