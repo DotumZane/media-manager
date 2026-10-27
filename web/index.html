@@ -235,8 +235,15 @@
                 </div>
 
                 <div class="vpn-docker-warning" id="vpn-docker-warning" hidden>
-                  <strong>Docker connection needed</strong>
-                  <span id="vpn-docker-warning-copy">Set the Docker socket host path to /var/run/docker.sock in Unraid to load containers.</span>
+                  <strong>Connect Media Manager to Unraid apps</strong>
+                  <p>Unraid uses Docker to run apps like qBittorrent. VPN Guard needs this connection to find your apps and stop the ones you choose if the VPN fails.</p>
+                  <ol>
+                    <li>In Unraid, open <strong>Docker</strong> and choose <strong>Edit</strong> for Media Manager.</li>
+                    <li>Set the Docker socket host path to <code>/var/run/docker.sock</code>. The container path should be the same. Use Read/Write access.</li>
+                    <li>Click <strong>Apply</strong>, return here, then refresh the container list.</li>
+                  </ol>
+                  <span id="vpn-docker-warning-copy">Docker is not connected. Set its host path to /var/run/docker.sock in the Unraid container settings.</span>
+                  <p class="vpn-warning-security">This connection gives Media Manager broad control of Unraid apps. VPN Guard is off until you enable it.</p>
                 </div>
 
                 <label class="toggle-field">
@@ -281,7 +288,7 @@
 
                 <p class="vpn-check-note">When VPN Guard is enabled, Check now counts as a live check and can trigger the shutdown rule.</p>
 
-                <div class="vpn-security-note"><strong>Server access</strong><span>Container discovery and stopping use Unraid’s Docker connection. Keep Media Manager on a trusted network and use a strong sign-in password. Re-arming does not restart stopped containers.</span></div>
+                <div class="vpn-security-note"><strong>After a stop</strong><span>Re-arming allows checks to continue. It does not restart stopped containers.</span></div>
               </div>
             </section>
           </form>

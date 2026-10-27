@@ -252,6 +252,16 @@ def public_settings():
 
 
 DOCKER_SOCKET_PATH = os.getenv("DOCKER_SOCKET", "/var/run/docker.sock")
+
+
+def docker_connection_message(exc):
+    if isinstance(exc, FileNotFoundError):
+        return "Docker is not connected. In Unraid, edit Media Manager and set the Docker socket host path to /var/run/docker.sock."
+    if isinstance(exc, PermissionError):
+        return "Media Manager cannot access Docker. Check that the Docker socket path is /var/run/docker.sock and has Read/Write access."
+    return "Media Manager could not reach Unraid's Docker service. Check the Docker socket path in the container settings."
+
+
 VPN_STATUS_LOCK = threading.RLock()
 VPN_CHECK_LOCK = threading.Lock()
 VPN_STATUS = {
@@ -527,7 +537,7 @@ def run_vpn_check(trigger=True):
                 check_address, container_address, trigger,
             )
         except Exception as exc:
-            message = f"VPN Guard check unavailable: {str(exc)[:240]}"
+            message = docker_connection_message(exc)
             previous_status = read_vpn_status()
             set_vpn_status(
                 state="unavailable", enabled=settings["vpn_enabled"],
@@ -811,13 +821,13 @@ class SetupHandler(BaseHTTPRequestHandler):
                     ],
                     "status": read_vpn_status(),
                 })
-            except Exception:
+            except Exception as exc:
                 self.send_json(200, {
                     "ok": True,
                     "docker_available": False,
                     "containers": [],
                     "status": read_vpn_status(),
-                    "message": "In the Unraid container settings, set the Docker socket host path to /var/run/docker.sock.",
+                    "message": docker_connection_message(exc),
                 })
             return
         if path == "/api/vpn/status":

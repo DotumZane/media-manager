@@ -20,7 +20,7 @@ Set a unique WEB_PASSWORD in the template. Open http://<Unraid-IP>:18473 and sig
 
 ### VPN Guard
 
-VPN Guard is optional. To use it, edit the Docker socket (VPN Guard) entry in the Unraid template and set its host path to `/var/run/docker.sock`. The UI then lists available containers, lets you choose one container to check, and lets you choose which containers to stop after the configured number of consecutive failures. It checks every 5 seconds by default and requires three failures before stopping anything. A triggered guard stays tripped until you re-arm it; re-arming does not restart stopped containers.
+VPN Guard is optional. Unraid uses Docker to run apps such as qBittorrent in containers. To let VPN Guard list them and stop selected apps, edit the Docker socket (VPN Guard) entry in the Unraid template and set its host path to `/var/run/docker.sock`; use the same container path and Read/Write access. The UI then lets you choose one container to check and which containers to stop after consecutive failures. It checks every 5 seconds by default and requires three failures before stopping anything. A triggered guard stays tripped until you re-arm it; re-arming does not restart stopped containers.
 
 Docker socket access is powerful: anyone who can control it can gain root-level control of the Unraid host. Keep Media Manager on a trusted network, use a strong password, and remove the socket mapping if you do not want VPN Guard to control containers. The Docker socket is not needed for Media Manager's media scanning and import features.
 
