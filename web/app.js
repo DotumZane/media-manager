@@ -1,5 +1,6 @@
 const form = document.querySelector("#settings-form");
 const saveResult = document.querySelector("#save-result");
+const stepOrder = ["folders", "scanner", "integrations", "review"];
 
 const settingNames = [
   "input_path", "quarantine_path", "clamav_host", "clamav_port",
@@ -31,6 +32,61 @@ function setKeyState(service, saved) {
   clear.hidden = !saved;
 }
 
+function showStep(name) {
+  const index = stepOrder.indexOf(name);
+  if (index < 0) return;
+  for (const panel of document.querySelectorAll("[data-step-panel]")) {
+    panel.hidden = panel.dataset.stepPanel !== name;
+  }
+  for (const tab of document.querySelectorAll("[data-step-target]")) {
+    const tabIndex = stepOrder.indexOf(tab.dataset.stepTarget);
+    const active = tab.dataset.stepTarget === name;
+    tab.classList.toggle("active", active);
+    tab.classList.toggle("complete", tabIndex < index);
+    if (active) tab.setAttribute("aria-current", "step");
+    else tab.removeAttribute("aria-current");
+  }
+  document.querySelector("#stepper-progress").style.width =
+    ((index / (stepOrder.length - 1)) * 100) + "%";
+  updateReview();
+}
+
+function validatePanel(name) {
+  const panel = document.querySelector('[data-step-panel="' + name + '"]');
+  for (const input of panel.querySelectorAll("input")) {
+    if (!input.checkValidity()) {
+      input.reportValidity();
+      return false;
+    }
+  }
+  return true;
+}
+
+function updateReview() {
+  if (!form || !form.elements.input_path) return;
+  const rows = [
+    ["Completed downloads", form.elements.input_path.value || "Not set"],
+    ["Quarantine", form.elements.quarantine_path.value || "Not set"],
+    ["ClamAV", (form.elements.clamav_host.value || "Not set") + ":" + (form.elements.clamav_port.value || "—")],
+    ["Scan timing", (form.elements.scan_interval.value || "—") + " second interval"],
+    ["Radarr", form.elements.radarr_url.value || "Not configured"],
+    ["Sonarr", form.elements.sonarr_url.value || "Not configured"],
+  ];
+  const summary = document.querySelector("#review-summary");
+  summary.replaceChildren(...rows.map(([label, value]) => {
+    const item = document.createElement("div");
+    const title = document.createElement("span");
+    const content = document.createElement("span");
+    item.className = "review-item";
+    title.className = "review-label";
+    content.className = "review-value";
+    title.textContent = label;
+    content.textContent = value;
+    item.append(title, content);
+    return item;
+  }));
+}
+
 async function requestJSON(url, body) {
   const response = await fetch(url, {
     method: body ? "POST" : "GET",
@@ -56,6 +112,24 @@ document.querySelector("#logout-button").addEventListener("click", async (event)
   }
 });
 
+for (const tab of document.querySelectorAll("[data-step-target]")) {
+  tab.addEventListener("click", () => showStep(tab.dataset.stepTarget));
+}
+
+for (const button of document.querySelectorAll("[data-next]")) {
+  button.addEventListener("click", () => {
+    const currentPanel = button.closest("[data-step-panel]");
+    if (validatePanel(currentPanel.dataset.stepPanel)) showStep(button.dataset.next);
+  });
+}
+
+for (const button of document.querySelectorAll("[data-previous]")) {
+  button.addEventListener("click", () => showStep(button.dataset.previous));
+}
+
+form.addEventListener("input", updateReview);
+form.addEventListener("change", updateReview);
+
 function fillSettings(settings) {
   for (const name of settingNames) {
     if (name.endsWith("_api_key")) continue;
@@ -70,6 +144,8 @@ async function loadSettings() {
     const response = await requestJSON("/api/config");
     fillSettings(response.settings);
     document.querySelector("#service-state").textContent = "MediaValidator online";
+    document.querySelector("#service-dot").classList.add("online");
+    updateReview();
   } catch (error) {
     document.querySelector("#service-state").textContent = "Could not load settings";
     setResult(saveResult, error.message, "error");
@@ -78,6 +154,13 @@ async function loadSettings() {
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
+  for (const input of form.querySelectorAll("input")) {
+    if (!input.checkValidity()) {
+      showStep(input.closest("[data-step-panel]").dataset.stepPanel);
+      input.reportValidity();
+      return;
+    }
+  }
   setResult(saveResult, "Saving…");
   const button = form.querySelector("button[type=submit]");
   button.disabled = true;
@@ -118,4 +201,5 @@ for (const button of document.querySelectorAll("[data-test]")) {
   });
 }
 
+showStep("folders");
 loadSettings();
