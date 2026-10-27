@@ -4,245 +4,211 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light" />
-    <title>Media Manager · Setup</title>
+    <title>Media Manager · Settings</title>
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/styles.css" />
     <script src="/app.js" defer></script>
   </head>
   <body>
-    <div class="shell">
-      <header class="topbar">
-        <a class="brand" href="/" aria-label="Media Manager home">
+    <div class="app-shell">
+      <aside class="sidebar">
+        <a class="brand" href="/" aria-label="Media Manager">
           <img src="/icon.svg" alt="" />
-          <span>Media Manager</span>
+          <span><strong>Media Manager</strong><small>SERVER SETTINGS</small></span>
         </a>
-        <div class="topbar-meta">
-          <span class="service-dot" id="service-dot" aria-hidden="true"></span>
-          <span id="service-state">Connecting…</span>
-          <button id="logout-button" class="logout-button" type="button">Sign out</button>
-        </div>
-      </header>
 
-      <main class="workspace">
-        <div class="page-heading">
-          <div>
-            <div class="eyebrow"><span class="eyebrow-line"></span> SETUP WORKSPACE</div>
-            <h1>Configure your media workflow</h1>
-            <p>Set your folders, connect your services, and review everything before saving.</p>
-          </div>
-          <div class="heading-note">
-            <span class="note-icon" aria-hidden="true">i</span>
-            <span>Settings save on this server.<br />Saved API keys stay private.</span>
-          </div>
-        </div>
-
-        <nav class="stepper" aria-label="Setup steps">
-          <div class="stepper-track" aria-hidden="true"><span id="stepper-progress"></span></div>
-          <button class="step-tab active" type="button" data-step-target="folders" aria-current="step">
-            <span class="step-index">01</span><span class="step-label">Folders</span>
+        <div class="nav-caption">CONFIGURATION</div>
+        <nav class="side-nav" aria-label="Settings sections">
+          <button class="nav-item active" type="button" data-page-target="folders" aria-current="page">
+            <span class="nav-icon" aria-hidden="true">▤</span><span class="nav-label">Folders</span>
           </button>
-          <button class="step-tab" type="button" data-step-target="scanner">
-            <span class="step-index">02</span><span class="step-label">Scanner</span>
+          <button class="nav-item" type="button" data-page-target="scanner" aria-current="false">
+            <span class="nav-icon" aria-hidden="true">⌁</span><span class="nav-label">Scanner</span>
           </button>
-          <button class="step-tab" type="button" data-step-target="integrations">
-            <span class="step-index">03</span><span class="step-label">Services</span>
+          <div class="nav-caption nav-caption-sub">INTEGRATIONS</div>
+          <button class="nav-item" type="button" data-page-target="radarr" aria-current="false">
+            <span class="nav-icon integration-icon radarr-icon">R</span><span class="nav-label">Radarr</span>
+            <span class="nav-status" id="radarr-nav-status" aria-label="Radarr key not set"></span>
           </button>
-          <button class="step-tab" type="button" data-step-target="review">
-            <span class="step-index">04</span><span class="step-label">Review</span>
+          <button class="nav-item" type="button" data-page-target="sonarr" aria-current="false">
+            <span class="nav-icon integration-icon sonarr-icon">S</span><span class="nav-label">Sonarr</span>
+            <span class="nav-status" id="sonarr-nav-status" aria-label="Sonarr key not set"></span>
           </button>
         </nav>
 
-        <form id="settings-form" class="setup-form" autocomplete="off" novalidate>
-          <section id="folders" class="step-panel" data-step-panel="folders">
-            <div class="panel-heading">
-              <div class="section-number">01</div>
-              <div>
-                <p class="panel-kicker">MEDIA LOCATIONS</p>
-                <h2>Choose your folders</h2>
-                <p>These paths are inside the container. Keep downloads and quarantine under the same mounted data folder for hardlinks.</p>
-              </div>
-            </div>
-            <div class="panel-body">
-              <div class="field-grid two">
-                <label class="field">
-                  <span>Completed downloads folder</span>
-                  <input name="input_path" type="text" required placeholder="/data/Downloads/Complete" />
-                  <small>Contains the Movies and TV folders MediaValidator scans.</small>
-                </label>
-                <label class="field">
-                  <span>Quarantine folder</span>
-                  <input name="quarantine_path" type="text" required placeholder="/data/Quarantine" />
-                  <small>Approved files are staged here before they are imported.</small>
-                </label>
-              </div>
-              <div class="panel-footer">
-                <div class="action-group">
-                  <button class="button button-secondary" type="button" data-test="paths">Check folders</button>
-                  <span class="test-result" id="result-paths" aria-live="polite"></span>
-                </div>
-                <button class="button button-primary" type="button" data-next="scanner">Continue <span aria-hidden="true">→</span></button>
-              </div>
-            </div>
-          </section>
+        <div class="sidebar-bottom">
+          <div class="sidebar-info-mark" aria-hidden="true">i</div>
+          <div><strong>Private by design</strong><span>Settings and credentials stay with this server.</span></div>
+        </div>
+      </aside>
 
-          <section id="scanner" class="step-panel" data-step-panel="scanner" hidden>
-            <div class="panel-heading">
-              <div class="section-number">02</div>
-              <div>
-                <p class="panel-kicker">FILE CHECKS</p>
-                <h2>Set up the scanner</h2>
-                <p>Choose the ClamAV endpoint and timing for checking completed downloads.</p>
-              </div>
-            </div>
-            <div class="panel-body">
-              <div class="field-grid three">
-                <label class="field">
-                  <span>ClamAV host</span>
-                  <input name="clamav_host" type="text" required placeholder="clamav" />
-                </label>
-                <label class="field">
-                  <span>ClamAV port</span>
-                  <input name="clamav_port" type="number" min="1" max="65535" required />
-                </label>
-                <label class="field">
-                  <span>Check every</span>
-                  <div class="input-suffix"><input name="scan_interval" type="number" min="1" max="3600" required /><span>seconds</span></div>
-                </label>
-                <label class="field wide">
-                  <span>Scan path inside ClamAV</span>
-                  <input name="clamav_scan_root" type="text" required placeholder="/scan" />
-                  <small>This must point to the same shared files as the completed downloads folder.</small>
-                </label>
-                <label class="field">
-                  <span>Wait for files to settle</span>
-                  <div class="input-suffix"><input name="settle_seconds" type="number" min="0" max="86400" required /><span>seconds</span></div>
-                </label>
-                <label class="field">
-                  <span>Retry imports every</span>
-                  <div class="input-suffix"><input name="import_retry_seconds" type="number" min="1" max="86400" required /><span>seconds</span></div>
-                </label>
-              </div>
-              <div class="panel-footer">
-                <div class="action-group">
-                  <button class="button button-secondary" type="button" data-test="clamav">Test ClamAV</button>
-                  <span class="test-result" id="result-clamav" aria-live="polite"></span>
-                </div>
-                <div class="panel-navigation">
-                  <button class="button button-quiet" type="button" data-previous="folders">Back</button>
-                  <button class="button button-primary" type="button" data-next="integrations">Continue <span aria-hidden="true">→</span></button>
-                </div>
-              </div>
-            </div>
-          </section>
+      <div class="main-column">
+        <header class="topbar">
+          <div class="topbar-status">
+            <span class="service-dot" id="service-dot" aria-hidden="true"></span>
+            <span id="service-state">Connecting…</span>
+          </div>
+          <div class="topbar-actions">
+            <span class="save-state" id="save-state">All changes saved</span>
+            <button id="save-button" class="button button-primary" type="submit" form="settings-form" disabled>
+              <span>Save changes</span><span aria-hidden="true">✓</span>
+            </button>
+            <button id="logout-button" class="logout-button" type="button">Sign out</button>
+          </div>
+        </header>
 
-          <section id="integrations" class="step-panel" data-step-panel="integrations" hidden>
-            <div class="panel-heading">
-              <div class="section-number">03</div>
-              <div>
-                <p class="panel-kicker">LIBRARY CONNECTIONS</p>
-                <h2>Connect your services</h2>
-                <p>Add the service URLs and API keys used to import approved movies and TV episodes.</p>
-              </div>
+        <main class="main-content">
+          <div class="page-heading">
+            <div>
+              <p class="page-kicker" id="page-kicker">CONFIGURATION / FOLDERS</p>
+              <h1 id="page-title">Folders</h1>
+              <p id="page-description">Set the locations MediaValidator watches and where it stages approved files.</p>
             </div>
-            <div class="panel-body">
-              <div class="service-grid">
-                <article class="service-card">
-                  <div class="integration-heading">
-                    <div class="integration-logo radarr">R</div>
-                    <div><h3>Radarr</h3><p>Movie imports</p></div>
-                    <span class="saved-pill" id="radarr-key-state">Key not set</span>
+          </div>
+
+          <form id="settings-form" class="settings-form" autocomplete="off" novalidate>
+            <section class="settings-page" data-settings-page="folders">
+              <div class="settings-card">
+                <div class="card-heading">
+                  <div class="card-icon folder-icon" aria-hidden="true">▤</div>
+                  <div><h2>Storage locations</h2><p>Use the paths as Media Manager sees them inside the container.</p></div>
+                </div>
+                <div class="field-grid two">
+                  <label class="field">
+                    <span>Completed downloads folder</span>
+                    <input name="input_path" type="text" required placeholder="/data/Downloads/Complete" />
+                    <small>Contains the Movies and TV folders MediaValidator scans.</small>
+                  </label>
+                  <label class="field">
+                    <span>Quarantine folder</span>
+                    <input name="quarantine_path" type="text" required placeholder="/data/Quarantine" />
+                    <small>Approved files are staged here before Radarr or Sonarr imports them.</small>
+                  </label>
+                </div>
+                <div class="field-tip"><span aria-hidden="true">↗</span> Keep downloads and quarantine under the same mounted data folder to allow hardlinks.</div>
+                <div class="card-actions">
+                  <div class="action-group">
+                    <button class="button button-secondary" type="button" data-test="paths">Check folders</button>
+                    <span class="test-result" id="result-paths" aria-live="polite"></span>
                   </div>
-                  <div class="service-fields">
-                    <label class="field">
-                      <span>Radarr URL</span>
-                      <input name="radarr_url" type="url" placeholder="http://radarr:7878" />
-                    </label>
-                    <label class="field">
-                      <span>API key</span>
-                      <input name="radarr_api_key" type="password" autocomplete="new-password" placeholder="Paste Radarr API key" />
-                      <small>Leave blank to keep the saved key.</small>
-                    </label>
-                    <label class="field">
-                      <span>Import folder inside Radarr</span>
-                      <input name="radarr_import_root" type="text" required placeholder="/data/Quarantine/Pending/Movies" />
-                    </label>
+                </div>
+              </div>
+            </section>
+
+            <section class="settings-page" data-settings-page="scanner" hidden>
+              <div class="settings-card">
+                <div class="card-heading">
+                  <div class="card-icon scanner-icon" aria-hidden="true">⌁</div>
+                  <div><h2>Scanner</h2><p>Configure ClamAV and the schedule for checking completed downloads.</p></div>
+                </div>
+                <div class="field-grid three">
+                  <label class="field">
+                    <span>ClamAV host</span>
+                    <input name="clamav_host" type="text" required placeholder="clamav" />
+                  </label>
+                  <label class="field">
+                    <span>ClamAV port</span>
+                    <input name="clamav_port" type="number" min="1" max="65535" required />
+                  </label>
+                  <label class="field">
+                    <span>Check every</span>
+                    <div class="input-suffix"><input name="scan_interval" type="number" min="1" max="3600" required /><span>seconds</span></div>
+                  </label>
+                  <label class="field wide">
+                    <span>Scan path inside ClamAV</span>
+                    <input name="clamav_scan_root" type="text" required placeholder="/scan" />
+                    <small>Mount the same media files in ClamAV and set the path ClamAV uses here.</small>
+                  </label>
+                  <label class="field">
+                    <span>Wait for files to settle</span>
+                    <div class="input-suffix"><input name="settle_seconds" type="number" min="0" max="86400" required /><span>seconds</span></div>
+                  </label>
+                  <label class="field">
+                    <span>Retry imports every</span>
+                    <div class="input-suffix"><input name="import_retry_seconds" type="number" min="1" max="86400" required /><span>seconds</span></div>
+                  </label>
+                </div>
+                <div class="card-actions">
+                  <div class="action-group">
+                    <button class="button button-secondary" type="button" data-test="clamav">Test ClamAV</button>
+                    <span class="test-result" id="result-clamav" aria-live="polite"></span>
                   </div>
-                  <label class="clear-key" id="radarr-clear-wrap" hidden><input name="clear_radarr_api_key" type="checkbox" /> Remove saved key</label>
-                  <div class="service-actions">
+                </div>
+              </div>
+            </section>
+
+            <section class="settings-page" data-settings-page="radarr" hidden>
+              <div class="settings-card">
+                <div class="card-heading">
+                  <div class="card-icon radarr-icon" aria-hidden="true">R</div>
+                  <div><h2>Radarr</h2><p>Connect movie imports and choose the folder Radarr uses for staged files.</p></div>
+                  <span class="saved-pill" id="radarr-key-state">Key not set</span>
+                </div>
+                <div class="field-grid two">
+                  <label class="field">
+                    <span>Radarr URL</span>
+                    <input name="radarr_url" type="url" placeholder="http://radarr:7878" />
+                    <small>Use the address reachable from the Media Manager container.</small>
+                  </label>
+                  <label class="field">
+                    <span>API key</span>
+                    <input name="radarr_api_key" type="password" autocomplete="new-password" placeholder="Paste Radarr API key" />
+                    <small>Saved keys are private. Leave blank to keep the current key.</small>
+                  </label>
+                  <label class="field wide">
+                    <span>Import folder inside Radarr</span>
+                    <input name="radarr_import_root" type="text" required placeholder="/data/Quarantine/Pending/Movies" />
+                    <small>This must point to the same staged files MediaValidator creates.</small>
+                  </label>
+                </div>
+                <label class="clear-key" id="radarr-clear-wrap" hidden><input name="clear_radarr_api_key" type="checkbox" /> Remove the saved Radarr key</label>
+                <div class="card-actions">
+                  <div class="action-group">
                     <button class="button button-secondary" type="button" data-test="radarr">Test Radarr</button>
                     <span class="test-result" id="result-radarr" aria-live="polite"></span>
                   </div>
-                </article>
+                </div>
+              </div>
+            </section>
 
-                <article class="service-card">
-                  <div class="integration-heading">
-                    <div class="integration-logo sonarr">S</div>
-                    <div><h3>Sonarr</h3><p>TV episode imports</p></div>
-                    <span class="saved-pill" id="sonarr-key-state">Key not set</span>
-                  </div>
-                  <div class="service-fields">
-                    <label class="field">
-                      <span>Sonarr URL</span>
-                      <input name="sonarr_url" type="url" placeholder="http://sonarr:8989" />
-                    </label>
-                    <label class="field">
-                      <span>API key</span>
-                      <input name="sonarr_api_key" type="password" autocomplete="new-password" placeholder="Paste Sonarr API key" />
-                      <small>Leave blank to keep the saved key.</small>
-                    </label>
-                    <label class="field">
-                      <span>Import folder inside Sonarr</span>
-                      <input name="sonarr_import_root" type="text" required placeholder="/data/Quarantine/Pending/TV" />
-                    </label>
-                  </div>
-                  <label class="clear-key" id="sonarr-clear-wrap" hidden><input name="clear_sonarr_api_key" type="checkbox" /> Remove saved key</label>
-                  <div class="service-actions">
+            <section class="settings-page" data-settings-page="sonarr" hidden>
+              <div class="settings-card">
+                <div class="card-heading">
+                  <div class="card-icon sonarr-icon" aria-hidden="true">S</div>
+                  <div><h2>Sonarr</h2><p>Connect TV episode imports and choose the folder Sonarr uses for staged files.</p></div>
+                  <span class="saved-pill" id="sonarr-key-state">Key not set</span>
+                </div>
+                <div class="field-grid two">
+                  <label class="field">
+                    <span>Sonarr URL</span>
+                    <input name="sonarr_url" type="url" placeholder="http://sonarr:8989" />
+                    <small>Use the address reachable from the Media Manager container.</small>
+                  </label>
+                  <label class="field">
+                    <span>API key</span>
+                    <input name="sonarr_api_key" type="password" autocomplete="new-password" placeholder="Paste Sonarr API key" />
+                    <small>Saved keys are private. Leave blank to keep the current key.</small>
+                  </label>
+                  <label class="field wide">
+                    <span>Import folder inside Sonarr</span>
+                    <input name="sonarr_import_root" type="text" required placeholder="/data/Quarantine/Pending/TV" />
+                    <small>This must point to the same staged files MediaValidator creates.</small>
+                  </label>
+                </div>
+                <label class="clear-key" id="sonarr-clear-wrap" hidden><input name="clear_sonarr_api_key" type="checkbox" /> Remove the saved Sonarr key</label>
+                <div class="card-actions">
+                  <div class="action-group">
                     <button class="button button-secondary" type="button" data-test="sonarr">Test Sonarr</button>
                     <span class="test-result" id="result-sonarr" aria-live="polite"></span>
                   </div>
-                </article>
-              </div>
-              <div class="panel-footer">
-                <div class="integration-note"><span aria-hidden="true">⌑</span> API keys are stored privately and never displayed again after saving.</div>
-                <div class="panel-navigation">
-                  <button class="button button-quiet" type="button" data-previous="scanner">Back</button>
-                  <button class="button button-primary" type="button" data-next="review">Review setup <span aria-hidden="true">→</span></button>
                 </div>
               </div>
-            </div>
-          </section>
+            </section>
+          </form>
 
-          <section id="review" class="step-panel" data-step-panel="review" hidden>
-            <div class="panel-heading">
-              <div class="section-number">04</div>
-              <div>
-                <p class="panel-kicker">FINAL CHECK</p>
-                <h2>Review and save</h2>
-                <p>Take a quick look at your paths and connections. You can return to any step to make changes.</p>
-              </div>
-            </div>
-            <div class="panel-body review-body">
-              <div id="review-summary" class="review-grid" aria-live="polite"></div>
-              <div class="review-note">
-                <span class="note-icon" aria-hidden="true">i</span>
-                <span>Saving applies these settings immediately. Your validator history and existing rules are preserved.</span>
-              </div>
-              <div class="panel-footer">
-                <span class="save-result" id="save-result" aria-live="polite"></span>
-                <div class="panel-navigation">
-                  <button class="button button-quiet" type="button" data-previous="integrations">Back</button>
-                  <button class="button button-primary" type="submit"><span>Save settings</span><span aria-hidden="true">✓</span></button>
-                </div>
-              </div>
-            </div>
-          </section>
-        </form>
-
-        <footer class="workspace-footer">
-          <span>Media Manager setup</span>
-          <span>Configuration stays with your app’s runtime data.</span>
-        </footer>
-      </main>
+          <footer class="main-footer"><span>Media Manager settings</span><span>Configuration stays with your app’s runtime data.</span></footer>
+        </main>
+      </div>
     </div>
   </body>
 </html>

@@ -1,13 +1,37 @@
 const form = document.querySelector("#settings-form");
-const saveResult = document.querySelector("#save-result");
-const stepOrder = ["folders", "scanner", "integrations", "review"];
-
+const saveButton = document.querySelector("#save-button");
+const saveState = document.querySelector("#save-state");
 const settingNames = [
   "input_path", "quarantine_path", "clamav_host", "clamav_port",
   "clamav_scan_root", "radarr_url", "radarr_api_key", "radarr_import_root",
   "sonarr_url", "sonarr_api_key", "sonarr_import_root", "scan_interval",
   "settle_seconds", "import_retry_seconds",
 ];
+
+const pages = {
+  folders: {
+    kicker: "CONFIGURATION / FOLDERS",
+    title: "Folders",
+    description: "Set the locations MediaValidator watches and where it stages approved files.",
+  },
+  scanner: {
+    kicker: "CONFIGURATION / SCANNER",
+    title: "Scanner",
+    description: "Configure ClamAV and the schedule for checking completed downloads.",
+  },
+  radarr: {
+    kicker: "INTEGRATIONS / RADARR",
+    title: "Radarr",
+    description: "Connect movie imports and choose the folder Radarr uses for staged files.",
+  },
+  sonarr: {
+    kicker: "INTEGRATIONS / SONARR",
+    title: "Sonarr",
+    description: "Connect TV episode imports and choose the folder Sonarr uses for staged files.",
+  },
+};
+
+let savedSignature = null;
 
 function formSettings() {
   const values = {};
@@ -17,74 +41,65 @@ function formSettings() {
   return values;
 }
 
+function signature() {
+  return JSON.stringify(formSettings());
+}
+
 function setResult(element, message, state = "") {
   element.textContent = message;
   element.classList.remove("success", "error");
   if (state) element.classList.add(state);
 }
 
+function setSaveState(message, state = "") {
+  saveState.textContent = message;
+  saveState.classList.remove("pending", "error");
+  if (state) saveState.classList.add(state);
+}
+
+function updateDirtyState() {
+  if (savedSignature === null) return;
+  const dirty = signature() !== savedSignature;
+  saveButton.disabled = !dirty;
+  setSaveState(dirty ? "Unsaved changes" : "All changes saved", dirty ? "pending" : "");
+}
+
+function showPage(name) {
+  const page = pages[name];
+  if (!page) return;
+  for (const panel of document.querySelectorAll("[data-settings-page]")) {
+    panel.hidden = panel.dataset.settingsPage !== name;
+  }
+  for (const item of document.querySelectorAll("[data-page-target]")) {
+    const active = item.dataset.pageTarget === name;
+    item.classList.toggle("active", active);
+    if (active) item.setAttribute("aria-current", "page");
+    else item.setAttribute("aria-current", "false");
+  }
+  document.querySelector("#page-kicker").textContent = page.kicker;
+  document.querySelector("#page-title").textContent = page.title;
+  document.querySelector("#page-description").textContent = page.description;
+}
+
 function setKeyState(service, saved) {
   const key = service.toLowerCase();
-  const pill = document.querySelector(`#${key}-key-state`);
-  const clear = document.querySelector(`#${key}-clear-wrap`);
+  const pill = document.querySelector("#" + key + "-key-state");
+  const clear = document.querySelector("#" + key + "-clear-wrap");
   pill.textContent = saved ? "Key saved" : "Key not set";
   pill.classList.toggle("saved", saved);
   clear.hidden = !saved;
+  updateNavStatus(key);
 }
 
-function showStep(name) {
-  const index = stepOrder.indexOf(name);
-  if (index < 0) return;
-  for (const panel of document.querySelectorAll("[data-step-panel]")) {
-    panel.hidden = panel.dataset.stepPanel !== name;
-  }
-  for (const tab of document.querySelectorAll("[data-step-target]")) {
-    const tabIndex = stepOrder.indexOf(tab.dataset.stepTarget);
-    const active = tab.dataset.stepTarget === name;
-    tab.classList.toggle("active", active);
-    tab.classList.toggle("complete", tabIndex < index);
-    if (active) tab.setAttribute("aria-current", "step");
-    else tab.removeAttribute("aria-current");
-  }
-  document.querySelector("#stepper-progress").style.width =
-    ((index / (stepOrder.length - 1)) * 100) + "%";
-  updateReview();
-}
-
-function validatePanel(name) {
-  const panel = document.querySelector('[data-step-panel="' + name + '"]');
-  for (const input of panel.querySelectorAll("input")) {
-    if (!input.checkValidity()) {
-      input.reportValidity();
-      return false;
-    }
-  }
-  return true;
-}
-
-function updateReview() {
-  if (!form || !form.elements.input_path) return;
-  const rows = [
-    ["Completed downloads", form.elements.input_path.value || "Not set"],
-    ["Quarantine", form.elements.quarantine_path.value || "Not set"],
-    ["ClamAV", (form.elements.clamav_host.value || "Not set") + ":" + (form.elements.clamav_port.value || "—")],
-    ["Scan timing", (form.elements.scan_interval.value || "—") + " second interval"],
-    ["Radarr", form.elements.radarr_url.value || "Not configured"],
-    ["Sonarr", form.elements.sonarr_url.value || "Not configured"],
-  ];
-  const summary = document.querySelector("#review-summary");
-  summary.replaceChildren(...rows.map(([label, value]) => {
-    const item = document.createElement("div");
-    const title = document.createElement("span");
-    const content = document.createElement("span");
-    item.className = "review-item";
-    title.className = "review-label";
-    content.className = "review-value";
-    title.textContent = label;
-    content.textContent = value;
-    item.append(title, content);
-    return item;
-  }));
+function updateNavStatus(key) {
+  const url = form.elements[key + "_url"].value.trim();
+  const enteredKey = form.elements[key + "_api_key"].value.trim();
+  const savedKey = document.querySelector("#" + key + "-key-state").classList.contains("saved");
+  const removingKey = form.elements["clear_" + key + "_api_key"].checked;
+  const ready = Boolean(url && (enteredKey || (savedKey && !removingKey)));
+  const indicator = document.querySelector("#" + key + "-nav-status");
+  indicator.classList.toggle("ready", ready);
+  indicator.setAttribute("aria-label", ready ? key + " is configured" : key + " is not configured");
 }
 
 async function requestJSON(url, body) {
@@ -112,23 +127,20 @@ document.querySelector("#logout-button").addEventListener("click", async (event)
   }
 });
 
-for (const tab of document.querySelectorAll("[data-step-target]")) {
-  tab.addEventListener("click", () => showStep(tab.dataset.stepTarget));
+for (const item of document.querySelectorAll("[data-page-target]")) {
+  item.addEventListener("click", () => showPage(item.dataset.pageTarget));
 }
 
-for (const button of document.querySelectorAll("[data-next]")) {
-  button.addEventListener("click", () => {
-    const currentPanel = button.closest("[data-step-panel]");
-    if (validatePanel(currentPanel.dataset.stepPanel)) showStep(button.dataset.next);
-  });
-}
-
-for (const button of document.querySelectorAll("[data-previous]")) {
-  button.addEventListener("click", () => showStep(button.dataset.previous));
-}
-
-form.addEventListener("input", updateReview);
-form.addEventListener("change", updateReview);
+form.addEventListener("input", () => {
+  updateDirtyState();
+  updateNavStatus("radarr");
+  updateNavStatus("sonarr");
+});
+form.addEventListener("change", () => {
+  updateDirtyState();
+  updateNavStatus("radarr");
+  updateNavStatus("sonarr");
+});
 
 function fillSettings(settings) {
   for (const name of settingNames) {
@@ -143,12 +155,14 @@ async function loadSettings() {
   try {
     const response = await requestJSON("/api/config");
     fillSettings(response.settings);
+    savedSignature = signature();
+    updateDirtyState();
     document.querySelector("#service-state").textContent = "MediaValidator online";
     document.querySelector("#service-dot").classList.add("online");
-    updateReview();
   } catch (error) {
     document.querySelector("#service-state").textContent = "Could not load settings";
-    setResult(saveResult, error.message, "error");
+    document.querySelector("#service-dot").classList.add("error");
+    setSaveState(error.message, "error");
   }
 }
 
@@ -156,14 +170,14 @@ form.addEventListener("submit", async (event) => {
   event.preventDefault();
   for (const input of form.querySelectorAll("input")) {
     if (!input.checkValidity()) {
-      showStep(input.closest("[data-step-panel]").dataset.stepPanel);
+      showPage(input.closest("[data-settings-page]").dataset.settingsPage);
       input.reportValidity();
       return;
     }
   }
-  setResult(saveResult, "Saving…");
-  const button = form.querySelector("button[type=submit]");
-  button.disabled = true;
+
+  saveButton.disabled = true;
+  setSaveState("Saving changes…");
   try {
     const response = await requestJSON("/api/config", formSettings());
     fillSettings(response.settings);
@@ -171,22 +185,23 @@ form.addEventListener("submit", async (event) => {
     form.elements.sonarr_api_key.value = "";
     form.elements.clear_radarr_api_key.checked = false;
     form.elements.clear_sonarr_api_key.checked = false;
-    setResult(saveResult, "Saved. New settings are active.", "success");
+    savedSignature = signature();
+    updateDirtyState();
+    setSaveState("Changes saved", "");
   } catch (error) {
-    setResult(saveResult, error.message, "error");
-  } finally {
-    button.disabled = false;
+    saveButton.disabled = false;
+    setSaveState(error.message, "error");
   }
 });
 
 for (const button of document.querySelectorAll("[data-test]")) {
   button.addEventListener("click", async () => {
     const name = button.dataset.test;
-    const resultNode = document.querySelector(`#result-${name}`);
+    const resultNode = document.querySelector("#result-" + name);
     setResult(resultNode, "Checking…");
     button.disabled = true;
     try {
-      const response = await requestJSON(`/api/test/${name}`, formSettings());
+      const response = await requestJSON("/api/test/" + name, formSettings());
       if (response.details) {
         const message = response.details.map((item) => item.message).join(" ");
         setResult(resultNode, message, response.ok ? "success" : "error");
@@ -201,5 +216,5 @@ for (const button of document.querySelectorAll("[data-test]")) {
   });
 }
 
-showStep("folders");
+showPage("folders");
 loadSettings();
